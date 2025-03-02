@@ -6,16 +6,21 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from flask import Flask
 import threading
+import logging
+
+# הגדרת לוגים לדיבאג
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # הגדרות
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TOKEN:
-    print("שגיאה: הטוקן לא מוגדר!")
+    logger.error("שגיאה: הטוקן לא מוגדר!")
     exit(1)
 
 NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
-    'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',  # API של מבזקים עדכניים
+    'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',
     'walla': 'https://news.walla.co.il/'
 }
 
@@ -28,15 +33,15 @@ app = Flask(__name__)
 
 # פונקציה להרצת הבוט
 def run_bot():
-    print(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
+    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
     try:
-        app = Application.builder().token(TOKEN).build()
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("latest", latest))
-        print("התחברתי לטלגרם בהצלחה!")
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
+        bot_app = Application.builder().token(TOKEN).build()
+        bot_app.add_handler(CommandHandler("start", start))
+        bot_app.add_handler(CommandHandler("latest", latest))
+        logger.info("התחברתי לטלגרם בהצלחה!")
+        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
-        print(f"שגיאה בהרצת הבוט: {e}")
+        logger.error(f"שגיאה בהרצת הבוט: {e}")
 
 # פונקציות של הבוט
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -48,7 +53,7 @@ def scrape_ynet():
         soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=HEADERS).text, 'html.parser')
         return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
     except Exception as e:
-        print(f"שגיאה ב-Ynet: {e}")
+        logger.error(f"שגיאה ב-Ynet: {e}")
         return []
 
 def scrape_arutz7():
@@ -65,7 +70,7 @@ def scrape_arutz7():
             } for item in items[:3]
         ]
     except Exception as e:
-        print(f"שגיאה בערוץ 7: {e}")
+        logger.error(f"שגיאה בערוץ 7: {e}")
         return []
 
 def scrape_walla():
@@ -86,12 +91,11 @@ def scrape_walla():
             results.append({'title': title, 'link': link})
         return results[:3]
     except Exception as e:
-        print(f"שגיאה ב-Walla: {e}")
+        logger.error(f"שגיאה ב-Walla: {e}")
         return []
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("מחפש מבזקים...")
-    
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
     walla_news = scrape_walla()
@@ -111,16 +115,14 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
-# שרת HTTP פשוט לשמירה על האפליקציה פעילה ב-Render
 @app.route('/')
 def home():
     return "Bot is alive!"
 
 if __name__ == "__main__":
-    # הפעלת הבוט ב-Thread נפרד
+    logger.info("מתחיל את השרת והבוט...")
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.start()
     
-    # הפעלת שרת ה-Flask
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
