@@ -150,7 +150,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    await query.message.reply_text("מחפש מבזקי ספורט...")
+    await query.message.reply_text("מחפש מבזקי ספורט... (הפונקציה עדיין בפיתוח, יתכנו תקלות)")
     
     sport5_news = scrape_sport5()
     
