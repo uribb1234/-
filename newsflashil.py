@@ -2,8 +2,8 @@ import os
 import cloudscraper
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from flask import Flask
 import threading
 import logging
@@ -31,15 +31,14 @@ HEADERS = {
 # יצירת אפליקציית Flask
 app = Flask(__name__)
 
+# פונקציה להרצת שרת Flask
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
+# פונקציות של הבוט
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [[InlineKeyboardButton("\ud83d\udcf2 קבל מבזקים עכשיו", callback_data='get_latest')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text("ברוך הבא! לחץ על הכפתור למבזקים.", reply_markup=reply_markup)
+    await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 def scrape_ynet():
     try:
@@ -95,7 +94,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     walla_news = scrape_walla()
 
     news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
-    message = "\ud83d\udcf0 **המבזקים האחרונים** \ud83d\udcf0\n\n"
+    message = "📰 **המבזקים האחרונים** 📰\n\n"
     for site, articles in news.items():
         message += f"**{site}:**\n"
         if articles:
@@ -109,13 +108,6 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'get_latest':
-        await latest(update, context)
-
 @app.route('/')
 def home():
     return "Bot is alive!"
@@ -123,15 +115,16 @@ def home():
 if __name__ == "__main__":
     logger.info("מתחיל את השרת והבוט...")
     
+    # הרצת שרת Flask ב-Thread נפרד
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
+    # הרצת הבוט ב-Thread הראשי
+    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
     try:
         bot_app = Application.builder().token(TOKEN).build()
         bot_app.add_handler(CommandHandler("start", start))
         bot_app.add_handler(CommandHandler("latest", latest))
-        bot_app.add_handler(CallbackQueryHandler(button_handler))
-        
         logger.info("התחברתי לטלגרם בהצלחה!")
         bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
