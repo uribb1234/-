@@ -2,8 +2,8 @@ import os
 import cloudscraper
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask
 import threading
 import logging
@@ -106,7 +106,16 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             message += "לא ניתן לטעון כרגע\n"
         message += "\n"
-    await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
+    
+    keyboard = [[InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.message.reply_text("הפונקציה עדיין בפיתוח")
 
 @app.route('/')
 def home():
@@ -125,6 +134,7 @@ if __name__ == "__main__":
         bot_app = Application.builder().token(TOKEN).build()
         bot_app.add_handler(CommandHandler("start", start))
         bot_app.add_handler(CommandHandler("latest", latest))
+        bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
         logger.info("התחברתי לטלגרם בהצלחה!")
         bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
