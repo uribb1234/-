@@ -6,7 +6,6 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from flask import Flask
 import threading
-import asyncio
 import logging
 
 # הגדרת לוגים לדיבאג
@@ -32,23 +31,10 @@ HEADERS = {
 # יצירת אפליקציית Flask
 app = Flask(__name__)
 
-# פונקציה להרצת הבוט עם לולאת אירועים
-def run_bot():
-    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
-    try:
-        # יצירת לולאת אירועים חדשה ל-Thread הזה
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        bot_app = Application.builder().token(TOKEN).build()
-        bot_app.add_handler(CommandHandler("start", start))
-        bot_app.add_handler(CommandHandler("latest", latest))
-        logger.info("התחברתי לטלגרם בהצלחה!")
-        
-        # הרצת ה-Polling בלולאה הזו
-        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
-    except Exception as e:
-        logger.error(f"שגיאה בהרצת הבוט: {e}")
+# פונקציה להרצת שרת Flask
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
 # פונקציות של הבוט
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -128,8 +114,18 @@ def home():
 
 if __name__ == "__main__":
     logger.info("מתחיל את השרת והבוט...")
-    bot_thread = threading.Thread(target=run_bot)
-    bot_thread.start()
     
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    # הרצת שרת Flask ב-Thread נפרד
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.start()
+    
+    # הרצת הבוט ב-Thread הראשי
+    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
+    try:
+        bot_app = Application.builder().token(TOKEN).build()
+        bot_app.add_handler(CommandHandler("start", start))
+        bot_app.add_handler(CommandHandler("latest", latest))
+        logger.info("התחברתי לטלגרם בהצלחה!")
+        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"שגיאה בהרצת הבוט: {e}")
