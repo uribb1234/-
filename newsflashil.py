@@ -21,7 +21,8 @@ if not TOKEN:
 NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
     'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',
-    'walla': 'https://news.walla.co.il/'
+    'walla': 'https://news.walla.co.il/',
+    'sport5': 'https://www.sport5.co.il/Ajax/GetNewsRoomTS.aspx'
 }
 
 HEADERS = {
@@ -87,6 +88,39 @@ def scrape_walla():
         logger.error(f"שגיאה ב-Walla: {e}")
         return []
 
+def scrape_sport5():
+    try:
+        url = NEWS_SITES['sport5']
+        response = requests.get(url, headers=HEADERS)
+        response.raise_for_status()
+        data = response.json()
+        articles = data.get('Items', []) if 'Items' in data else data
+        
+        results = []
+        for item in articles[:3]:
+            time = item.get('time', item.get('date', 'ללא שעה'))
+            title = item.get('title', 'ללא כותרת')
+            link = item.get('link', '#')
+            if link and not link.startswith('http'):
+                link = f"https://www.sport5.co.il/{link}"
+            
+            results.append({
+                'time': time,
+                'title': title,
+                'link': link
+            })
+        return results
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"שגיאה בבקשה ל-API של ספורט 5: {e}")
+        return []
+    except ValueError as e:
+        logger.error(f"שגיאה בפענוח JSON מספורט 5: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"שגיאה כללית בספורט 5: {e}")
+        return []
+
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
@@ -115,7 +149,22 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.message.reply_text("הפונקציה עדיין בפיתוח")
+    
+    await query.message.reply_text("מחפש מבזקי ספורט...")
+    
+    sport5_news = scrape_sport5()
+    
+    message = "🏀⚽ **מבזקי ספורט אחרונים - ספורט 5** 🏀⚽\n\n"
+    if sport5_news:
+        for idx, article in enumerate(sport5_news[:3], 1):
+            if 'time' in article:
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message = "לא ניתן למצוא מבזקים"
+    
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
 @app.route('/')
 def home():
