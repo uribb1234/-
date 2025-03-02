@@ -1,4 +1,5 @@
+python-telegram-bot
 cloudscraper
 requests
-python-telegram-bot==20.0
 beautifulsoup4
+flask
