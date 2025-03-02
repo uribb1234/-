@@ -4,6 +4,8 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+from flask import Flask
+import threading
 
 # הגדרות
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -21,6 +23,22 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124'
 }
 
+# יצירת אפליקציית Flask
+app = Flask(__name__)
+
+# פונקציה להרצת הבוט
+def run_bot():
+    print(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
+    try:
+        app = Application.builder().token(TOKEN).build()
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("latest", latest))
+        print("התחברתי לטלגרם בהצלחה!")
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        print(f"שגיאה בהרצת הבוט: {e}")
+
+# פונקציות של הבוט
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
@@ -93,17 +111,16 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
-def main():
-    print(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
-    try:
-        # שימוש ב-Application במקום Updater
-        app = Application.builder().token(TOKEN).build()
-        app.add_handler(CommandHandler("start", start))
-        app.add_handler(CommandHandler("latest", latest))
-        print("התחברתי לטלגרם בהצלחה!")
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception as e:
-        print(f"שגיאה בהרצת הבוט: {e}")
+# שרת HTTP פשוט לשמירה על האפליקציה פעילה ב-Render
+@app.route('/')
+def home():
+    return "Bot is alive!"
 
 if __name__ == "__main__":
-    main()
+    # הפעלת הבוט ב-Thread נפרד
+    bot_thread = threading.Thread(target=run_bot)
+    bot_thread.start()
+    
+    # הפעלת שרת ה-Flask
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
