@@ -46,8 +46,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     log_interaction(user_id, "/download")
-    SECRET_PASSWORD = "My$ecretBot2023!"
+    SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
 
+    if not SECRET_PASSWORD:
+        await update.message.reply_text("שגיאה: הסיסמה לא מוגדרת בשרת!")
+        return
+    
     if not context.args or context.args[0] != SECRET_PASSWORD:
         await update.message.reply_text("סיסמה שגויה! אין גישה.")
         return
@@ -60,7 +64,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(filename, 'rb') as file:
             await update.message.reply_document(document=file, filename="bot_usage.xlsx")
         await update.message.reply_text("הנה הנתונים שלך!")
-        os.remove(filename)  # מחיקת הקובץ לאחר השליחה
+        os.remove(filename)
     except Exception as e:
         logger.error(f"שגיאה בשליחת הקובץ: {e}")
         await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
@@ -328,6 +332,9 @@ if __name__ == "__main__":
     # הגדרת ה-Webhook
     port = int(os.environ.get("PORT", 8080))
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
+    if not os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+        logger.error("שגיאה: RENDER_EXTERNAL_HOSTNAME לא מוגדר!")
+        exit(1)
     
     # רישום המטפלים
     bot_app.add_handler(CommandHandler("start", start))
