@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request
-import threading
 import logging
 import asyncio
 from data_logger import log_interaction, save_to_excel
@@ -359,9 +358,10 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הגדרת ה-Webhook
+    # איתחול ה-Application
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(set_webhook())
+    loop.run_until_complete(bot_app.initialize())  # איתחול האובייקט
+    loop.run_until_complete(set_webhook())         # הגדרת ה-Webhook
 
     # הרצת Flask
     port = int(os.environ.get("PORT", 8080))
