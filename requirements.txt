@@ -3,3 +3,5 @@ cloudscraper
 requests
 beautifulsoup4
 flask
+pandas
+openpyxl
