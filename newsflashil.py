@@ -23,7 +23,8 @@ NEWS_SITES = {
     'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',
     'walla': 'https://news.walla.co.il/',
     'sport5': 'https://m.sport5.co.il/',
-    'sport1': 'https://sport1.maariv.co.il/'
+    'sport1': 'https://sport1.maariv.co.il/',
+    'one': 'https://m.one.co.il/mobile/'
 }
 
 HEADERS = {
@@ -127,12 +128,11 @@ def scrape_sport1():
         scraper = cloudscraper.create_scraper()
         soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
         
-        # מציאת הכתבות מהרשימה של "hot-news-container"
         articles = soup.select('div.hot-news-container article.article-card')
         
         results = []
-        for item in articles[:3]:  # לוקחים עד 3 כתבות
-            link_tag = item.find_parent('a', class_='image-wrapper')  # הקישור נמצא ב-<a> שמעל ה-<article>
+        for item in articles[:3]:
+            link_tag = item.find_parent('a', class_='image-wrapper')
             title_tag = item.find('h3', class_='article-card-title')
             time_tag = item.find('time', class_='entry-date')
             
@@ -154,6 +154,40 @@ def scrape_sport1():
     
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ספורט 1: {e}")
+        return [], f"שגיאה לא ידועה: {str(e)}"
+
+def scrape_one():
+    try:
+        url = 'https://m.one.co.il/mobile/'
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
+        
+        articles = soup.select('a.mobile-hp-article-plain')
+        
+        results = []
+        for item in articles[:3]:
+            link_tag = item
+            title_tag = item.find('h1')
+            # אין זמן מפורש בקטע הזה, נשתמש ב"ללא שעה" כברירת מחדל
+            time = 'ללא שעה'
+            
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else '#'
+            
+            if link and not link.startswith('http'):
+                link = f"https://m.one.co.il{link}"
+            
+            results.append({
+                'time': time,
+                'title': title,
+                'link': link
+            })
+        
+        logger.info(f"סקריפינג ONE הצליח: {len(results)} כתבות נשלפו")
+        return results, None
+    
+    except Exception as e:
+        logger.error(f"שגיאה בסקריפינג ONE: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -185,10 +219,11 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    await query.message.reply_text("מחפש מבזקי ספורט... (הפונקציה עדיין בפיתוח, יתכנו תקלות)")
+    await query.message.reply_text("מחפש מבזקי ספורט...")
     
     sport5_news, sport5_error = scrape_sport5()
     sport1_news, sport1_error = scrape_sport1()
+    one_news, one_error = scrape_one()
     
     message = "**ספורט 5**\n"
     if sport5_news:
@@ -214,7 +249,17 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if sport1_error:
             message += f"**פרטי השגיאה:** {sport1_error}\n"
     
-    message += "\n**ONE**\n(בעבודה)\n"
+    message += "\n**ONE**\n"
+    if one_news:
+        for idx, article in enumerate(one_news[:3], 1):
+            if 'time' in article:
+                message += f"{idx}. {article['time']} - [{article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += "לא ניתן למצוא מבזקים\n"
+        if one_error:
+            message += f"**פרטי השגיאה:** {one_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -268,4 +313,4 @@ if __name__ == "__main__":
         logger.info("התחברתי לטלגרם בהצלחה!")
         bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
-        logger.error(f"שגיאה בהרצת הבוט: {e}")
+        logger.error(f"שגיאה בהרצ
