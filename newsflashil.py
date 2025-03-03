@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask, request
 import threading
 import logging
+import asyncio
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -35,7 +36,7 @@ HEADERS = {
 # יצירת אפליקציית Flask
 app = Flask(__name__)
 
-# יצירת אפליקציית Telegram מחוץ ל-main כדי שנוכל להשתמש בה ב-Webhook
+# יצירת אפליקציית Telegram
 bot_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -326,28 +327,30 @@ async def webhook():
     await bot_app.process_update(update)
     return "OK"
 
-if __name__ == "__main__":
-    logger.info("מתחיל את השרת והבוט...")
-    
-    # הגדרת ה-Webhook
-    port = int(os.environ.get("PORT", 8080))
+# פונקציה להגדרת ה-Webhook
+async def set_webhook():
     webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
     if not os.getenv("RENDER_EXTERNAL_HOSTNAME"):
         logger.error("שגיאה: RENDER_EXTERNAL_HOSTNAME לא מוגדר!")
         exit(1)
+    await bot_app.bot.setWebhook(webhook_url)
+    logger.info(f"Webhook הוגדר ל: {webhook_url}")
+
+# הרצת הבוט והשרת
+if __name__ == "__main__":
+    logger.info("מתחיל את השרת והבוט...")
     
-    # רישום המטפלים
+    # הגדרת המטפלים
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הגדרת ה-Webhook בטלגרם
-    async def set_webhook():
-        await bot_app.bot.setWebhook(webhook_url)
-        logger.info(f"Webhook הוגדר ל: {webhook_url}")
+    # הרצת ה-Webhook בשרשור נפרד
+    port = int(os.environ.get("PORT", 8080))
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(set_webhook())  # הגדרת ה-Webhook באופן סינכרוני
 
-    # הרצת Flask ו-Webhook
-    bot_app.run_async(set_webhook())
+    # הרצת Flask
     app.run(host="0.0.0.0", port=port)
