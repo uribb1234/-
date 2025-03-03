@@ -4,10 +4,10 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask
+from flask import Flask, request
 import threading
 import logging
-from data_logger import log_interaction, save_to_excel  # יבוא מהקובץ המשני
+from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -35,28 +35,35 @@ HEADERS = {
 # יצירת אפליקציית Flask
 app = Flask(__name__)
 
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+# יצירת אפליקציית Telegram מחוץ ל-main כדי שנוכל להשתמש בה ב-Webhook
+bot_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    log_interaction(user_id, "/start")  # תיעוד האינטראקציה
+    log_interaction(user_id, "/start")
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    log_interaction(user_id, "/download")  # תיעוד האינטראקציה
-    SECRET_PASSWORD = "My$ecretBot2023!"  # הסיסמה שלך (אפשר לשנות)
+    log_interaction(user_id, "/download")
+    SECRET_PASSWORD = "My$ecretBot2023!"
 
     if not context.args or context.args[0] != SECRET_PASSWORD:
         await update.message.reply_text("סיסמה שגויה! אין גישה.")
         return
     
-    filename = save_to_excel()
-    with open(filename, 'rb') as file:
-        await update.message.reply_document(document=file, filename="bot_usage.xlsx")
-    await update.message.reply_text("הנה הנתונים שלך!")
+    try:
+        filename = save_to_excel()
+        if not os.path.exists(filename):
+            await update.message.reply_text("שגיאה: הקובץ לא נוצר!")
+            return
+        with open(filename, 'rb') as file:
+            await update.message.reply_document(document=file, filename="bot_usage.xlsx")
+        await update.message.reply_text("הנה הנתונים שלך!")
+        os.remove(filename)  # מחיקת הקובץ לאחר השליחה
+    except Exception as e:
+        logger.error(f"שגיאה בשליחת הקובץ: {e}")
+        await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
 
 def scrape_ynet():
     try:
@@ -183,7 +190,7 @@ def scrape_one():
         for item in articles[:3]:
             link_tag = item
             title_tag = item.find('h1')
-            time = 'ללא שעה'  # נשאר פנימית עבורי, לא יוצג למשתמש
+            time = 'ללא שעה'
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
@@ -205,7 +212,7 @@ def scrape_one():
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    log_interaction(user_id, "/latest")  # תיעוד האינטראקציה
+    log_interaction(user_id, "/latest")
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
@@ -267,7 +274,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += "\n**ONE**\n"
     if one_news:
         for idx, article in enumerate(one_news[:3], 1):
-            message += f"{idx}. [{article['title']}]({article['link']})\n"  # הסרת "ללא שעה" מהתצוגה
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if one_error:
@@ -309,21 +316,31 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def home():
     return "Bot is alive!"
 
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    update = Update.de_json(request.get_json(force=True), bot_app.bot)
+    await bot_app.process_update(update)
+    return "OK"
+
 if __name__ == "__main__":
     logger.info("מתחיל את השרת והבוט...")
     
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
+    # הגדרת ה-Webhook
+    port = int(os.environ.get("PORT", 8080))
+    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
     
-    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
-    try:
-        bot_app = Application.builder().token(TOKEN).build()
-        bot_app.add_handler(CommandHandler("start", start))
-        bot_app.add_handler(CommandHandler("latest", latest))
-        bot_app.add_handler(CommandHandler("download", download))  # הוספת המטפל לפקודה download
-        bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
-        bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
-        logger.info("התחברתי לטלגרם בהצלחה!")
-        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception as e:
-        logger.error(f"שגיאה בהרצת הבוט: {e}")
+    # רישום המטפלים
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(CommandHandler("latest", latest))
+    bot_app.add_handler(CommandHandler("download", download))
+    bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+    bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
+
+    # הגדרת ה-Webhook בטלגרם
+    async def set_webhook():
+        await bot_app.bot.setWebhook(webhook_url)
+        logger.info(f"Webhook הוגדר ל: {webhook_url}")
+
+    # הרצת Flask ו-Webhook
+    bot_app.run_async(set_webhook())
+    app.run(host="0.0.0.0", port=port)
