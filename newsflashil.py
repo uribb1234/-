@@ -109,17 +109,18 @@ def scrape_sport5():
                 'title': title,
                 'link': link
             })
+        logger.info(f"סקריפינג ספורט 5 הצליח: {len(results)} כתבות נשלפו")
         return results
     
     except requests.exceptions.RequestException as e:
         logger.error(f"שגיאה בבקשה ל-API של ספורט 5: {e}")
-        return []
+        return [], f"תקלה בשרת: {str(e)}"
     except ValueError as e:
         logger.error(f"שגיאה בפענוח JSON מספורט 5: {e}")
-        return []
+        return [], f"פורמט נתונים לא נתמך: {str(e)}"
     except Exception as e:
         logger.error(f"שגיאה כללית בספורט 5: {e}")
-        return []
+        return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("מחפש מבזקים...")
@@ -152,7 +153,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש מבזקי ספורט... (הפונקציה עדיין בפיתוח, יתכנו תקלות)")
     
-    sport5_news = scrape_sport5()
+    sport5_news, error_message = scrape_sport5()  # מקבלים גם את הודעת השגיאה
     
     message = "🏀⚽ **מבזקי ספורט אחרונים - ספורט 5** 🏀⚽\n\n"
     if sport5_news:
@@ -162,7 +163,9 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
-        message = "לא ניתן למצוא מבזקים"
+        message += "לא ניתן למצוא מבזקים\n"
+        if error_message:
+            message += f"**פרטי השגיאה:** {error_message}"
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
