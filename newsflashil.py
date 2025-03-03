@@ -323,9 +323,22 @@ def home():
 
 @app.route('/webhook', methods=['POST'])
 async def webhook():
-    update = Update.de_json(request.get_json(force=True), bot_app.bot)
-    await bot_app.process_update(update)
-    return "OK"
+    try:
+        update_json = request.get_json(force=True)
+        if not update_json:
+            logger.error("שגיאה: לא התקבל JSON מה-Webhook")
+            return "No data", 400
+        
+        update = Update.de_json(update_json, bot_app.bot)
+        if not update:
+            logger.error("שגיאה: עדכון לא תקין מה-Webhook")
+            return "Invalid update", 400
+        
+        await bot_app.process_update(update)
+        return "OK"
+    except Exception as e:
+        logger.error(f"שגיאה בעיבוד Webhook: {e}")
+        return "Error", 500
 
 # פונקציה להגדרת ה-Webhook
 async def set_webhook():
@@ -336,7 +349,6 @@ async def set_webhook():
     await bot_app.bot.setWebhook(webhook_url)
     logger.info(f"Webhook הוגדר ל: {webhook_url}")
 
-# הרצת הבוט והשרת
 if __name__ == "__main__":
     logger.info("מתחיל את השרת והבוט...")
     
@@ -347,10 +359,10 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הרצת ה-Webhook בשרשור נפרד
-    port = int(os.environ.get("PORT", 8080))
+    # הגדרת ה-Webhook
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(set_webhook())  # הגדרת ה-Webhook באופן סינכרוני
+    loop.run_until_complete(set_webhook())
 
     # הרצת Flask
+    port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
