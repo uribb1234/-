@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask, request
+import threading
 import logging
 import asyncio
 from data_logger import log_interaction, save_to_excel
@@ -37,6 +38,9 @@ app = Flask(__name__)
 
 # יצירת אפליקציית Telegram
 bot_app = Application.builder().token(TOKEN).build()
+
+# לולאת asyncio גלובלית
+loop = asyncio.new_event_loop()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -348,6 +352,11 @@ async def set_webhook():
     await bot_app.bot.setWebhook(webhook_url)
     logger.info(f"Webhook הוגדר ל: {webhook_url}")
 
+# פונקציה לריצת לולאת ה-asyncio בשרשור נפרד
+def run_loop():
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
 if __name__ == "__main__":
     logger.info("מתחיל את השרת והבוט...")
     
@@ -358,10 +367,15 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # איתחול ה-Application
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(bot_app.initialize())  # איתחול האובייקט
-    loop.run_until_complete(set_webhook())         # הגדרת ה-Webhook
+    # הרצת לולאת ה-asyncio בשרשור נפרד
+    threading.Thread(target=run_loop, daemon=True).start()
+
+    # איתחול ה-Application והגדרת ה-Webhook
+    async def initialize_and_set_webhook():
+        await bot_app.initialize()  # איתחול ה-Application
+        await set_webhook()         # הגדרת ה-Webhook
+
+    asyncio.run_coroutine_threadsafe(initialize_and_set_webhook(), loop)
 
     # הרצת Flask
     port = int(os.environ.get("PORT", 8080))
