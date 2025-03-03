@@ -4,6 +4,8 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from flask import Flask
+import threading
 import logging
 from data_logger import log_interaction, save_to_excel
 
@@ -29,6 +31,9 @@ NEWS_SITES = {
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124'
 }
+
+# יצירת אפליקציית Flask דמה
+app = Flask(__name__)
 
 # יצירת אפליקציית Telegram
 bot_app = Application.builder().token(TOKEN).build()
@@ -311,8 +316,17 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
+# שרת Flask דמה שמקשיב לפורט
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
 if __name__ == "__main__":
-    logger.info("מתחיל את הבוט עם Polling...")
+    logger.info("מתחיל את הבוט עם Polling ושרת דמה...")
     
     # הגדרת המטפלים
     bot_app.add_handler(CommandHandler("start", start))
@@ -320,6 +334,10 @@ if __name__ == "__main__":
     bot_app.add_handler(CommandHandler("download", download))
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
+
+    # הרצת Flask בשרשור נפרד
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
 
     # איתחול והרצת Polling
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
