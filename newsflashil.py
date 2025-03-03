@@ -303,14 +303,14 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
-    try:
-        bot_app = Application.builder().token(TOKEN).build()
-        bot_app.add_handler(CommandHandler("start", start))
-        bot_app.add_handler(CommandHandler("latest", latest))
-        bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
-        bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
-        logger.info("התחברתי לטלגרם בהצלחה!")
-        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception as e:
-        logger.error(f"שגיאה בהרצ
+          logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
+      try:
+          bot_app = Application.builder().token(TOKEN).build()
+          bot_app.add_handler(CommandHandler("start", start))
+          bot_app.add_handler(CommandHandler("latest", latest))
+          bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+          bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
+          logger.info("התחברתי לטלגרם בהצלחה!")
+          bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+      except Exception as e:
+          logger.error(f"שגיאה בהרצת הבוט: {e}")
