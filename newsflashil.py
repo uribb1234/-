@@ -165,11 +165,41 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if error_message:
             message += f"**פרטי השגיאה:** {error_message}\n"
     
-    # הוספת כותרות לאתרי ספורט נוספים
     message += "\n**ספורט 1**\n(בעבודה)\n"
     message += "\n**ONE**\n(בעבודה)\n"
     
-    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
+    # הוספת לחצן חזרה לעמוד ראשי
+    keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    ynet_news = scrape_ynet()
+    arutz7_news = scrape_arutz7()
+    walla_news = scrape_walla()
+
+    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
+    message = "📰 **המבזקים האחרונים** 📰\n\n"
+    for site, articles in news.items():
+        message += f"**{site}:**\n"
+        if articles:
+            for idx, article in enumerate(articles[:3], 1):
+                if 'time' in article:
+                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                else:
+                    message += f"{idx}. [{article['title']}]({article['link']})\n"
+        else:
+            message += "לא ניתן לטעון כרגע\n"
+        message += "\n"
+    
+    keyboard = [[InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 @app.route('/')
 def home():
@@ -187,6 +217,7 @@ if __name__ == "__main__":
         bot_app.add_handler(CommandHandler("start", start))
         bot_app.add_handler(CommandHandler("latest", latest))
         bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+        bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))  # הוספת handler ללחצן החזרה
         logger.info("התחברתי לטלגרם בהצלחה!")
         bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
