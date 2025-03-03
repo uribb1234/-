@@ -39,18 +39,20 @@ app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    user_id = user.id
-    username = user.username
-    logger.info(f"User {user_id} sent /start, username: {username}, full user info: {user.to_dict()}")  # לוג עם כל המידע
+    user_id = update.message.from_user.id
+    # ננסה לשלוף את ה-username ישירות דרך get_chat
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} sent /start, username: {username}")  # לוג פשוט
     log_interaction(user_id, "/start", username)
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    user_id = user.id
-    username = user.username
-    logger.info(f"User {user_id} sent /download, username: {username}, full user info: {user.to_dict()}")  # לוג עם כל המידע
+    user_id = update.message.from_user.id
+    # ננסה לשלוף את ה-username ישירות דרך get_chat
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} sent /download, username: {username}")  # לוג פשוט
     log_interaction(user_id, "/download", username)
     SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
 
@@ -221,10 +223,11 @@ def scrape_one():
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.message.from_user
-    user_id = user.id
-    username = user.username
-    logger.info(f"User {user_id} sent /latest, username: {username}, full user info: {user.to_dict()}")  # לוג עם כל המידע
+    user_id = update.message.from_user.id
+    # ננסה לשלוף את ה-username ישירות דרך get_chat
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} sent /latest, username: {username}")  # לוג פשוט
     log_interaction(user_id, "/latest", username)
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
@@ -252,10 +255,11 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user = query.from_user
-    user_id = user.id
-    username = user.username
-    logger.info(f"User {user_id} triggered sports_news, username: {username}, full user info: {user.to_dict()}")  # לוג עם כל המידע
+    user_id = query.from_user.id
+    # ננסה לשלוף את ה-username ישירות דרך get_chat
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} triggered sports_news, username: {username}")  # לוג פשוט
     log_interaction(user_id, "sports_news", username)
     await query.answer()
     
@@ -305,10 +309,11 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user = query.from_user
-    user_id = user.id
-    username = user.username
-    logger.info(f"User {user_id} triggered latest_news, username: {username}, full user info: {user.to_dict()}")  # לוג עם כל המידע
+    user_id = query.from_user.id
+    # ננסה לשלוף את ה-username ישירות דרך get_chat
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} triggered latest_news, username: {username}")  # לוג פשוט
     log_interaction(user_id, "latest_news", username)
     await query.answer()
     
