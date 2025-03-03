@@ -40,14 +40,16 @@ bot_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username  # שם המשתמש מהאובייקט Update
-    log_interaction(user_id, "/start", username)  # שליחת ה-username לפונקציה
+    username = update.message.from_user.username
+    logger.info(f"פקודה /start ממשתמש {user_id}, username: {username}")  # לוג לבדיקה
+    log_interaction(user_id, "/start", username)
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username  # שם המשתמש מהאובייקט Update
-    log_interaction(user_id, "/download", username)  # שליחת ה-username לפונקציה
+    username = update.message.from_user.username
+    logger.info(f"פקודה /download ממשתמש {user_id}, username: {username}")  # לוג לבדיקה
+    log_interaction(user_id, "/download", username)
     SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
 
     if not SECRET_PASSWORD:
@@ -218,8 +220,9 @@ def scrape_one():
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username  # שם המשתמש מהאובייקט Update
-    log_interaction(user_id, "/latest", username)  # שליחת ה-username לפונקציה
+    username = update.message.from_user.username
+    logger.info(f"פקודה /latest ממשתמש {user_id}, username: {username}")  # לוג לבדיקה
+    log_interaction(user_id, "/latest", username)
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
@@ -247,8 +250,9 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.username  # שם המשתמש מהאובייקט CallbackQuery
-    log_interaction(user_id, "sports_news", username)  # שליחת ה-username לפונקציה
+    username = query.from_user.username
+    logger.info(f"Callback sports_news ממשתמש {user_id}, username: {username}")  # לוג לבדיקה
+    log_interaction(user_id, "sports_news", username)
     await query.answer()
     
     await query.message.reply_text("מחפש מבזקי ספורט...")
@@ -298,8 +302,9 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.username  # שם המשתמש מהאובייקט CallbackQuery
-    log_interaction(user_id, "latest_news", username)  # שליחת ה-username לפונקציה
+    username = query.from_user.username
+    logger.info(f"Callback latest_news ממשתמש {user_id}, username: {username}")  # לוג לבדיקה
+    log_interaction(user_id, "latest_news", username)
     await query.answer()
     
     ynet_news = scrape_ynet()
