@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
+from data_logger import log_interaction, save_to_excel  # יבוא מהקובץ המשני
 
 # הגדרת לוגים לדיבאג
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -39,7 +40,23 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    log_interaction(user_id, "/start")  # תיעוד האינטראקציה
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
+
+async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    log_interaction(user_id, "/download")  # תיעוד האינטראקציה
+    SECRET_PASSWORD = "My$ecretBot2023!"  # הסיסמה שלך (אפשר לשנות)
+
+    if not context.args or context.args[0] != SECRET_PASSWORD:
+        await update.message.reply_text("סיסמה שגויה! אין גישה.")
+        return
+    
+    filename = save_to_excel()
+    with open(filename, 'rb') as file:
+        await update.message.reply_document(document=file, filename="bot_usage.xlsx")
+    await update.message.reply_text("הנה הנתונים שלך!")
 
 def scrape_ynet():
     try:
@@ -187,6 +204,8 @@ def scrape_one():
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    log_interaction(user_id, "/latest")  # תיעוד האינטראקציה
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
@@ -301,6 +320,7 @@ if __name__ == "__main__":
         bot_app = Application.builder().token(TOKEN).build()
         bot_app.add_handler(CommandHandler("start", start))
         bot_app.add_handler(CommandHandler("latest", latest))
+        bot_app.add_handler(CommandHandler("download", download))  # הוספת המטפל לפקודה download
         bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
         bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
         logger.info("התחברתי לטלגרם בהצלחה!")
