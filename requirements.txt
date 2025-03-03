@@ -2,6 +2,6 @@ python-telegram-bot==20.7
 cloudscraper
 requests
 beautifulsoup4
-flask[async]
+flask
 pandas
 openpyxl
