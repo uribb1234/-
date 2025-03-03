@@ -40,15 +40,17 @@ bot_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username
-    logger.info(f"User {user_id} sent /start, username: {username}")  # לוג פשוט
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} sent /start, username: {username}")
     log_interaction(user_id, "/start", username)
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username
-    logger.info(f"User {user_id} sent /download, username: {username}")  # לוג פשוט
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} sent /download, username: {username}")
     log_interaction(user_id, "/download", username)
     SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
 
@@ -220,8 +222,9 @@ def scrape_one():
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    username = update.message.from_user.username
-    logger.info(f"User {user_id} sent /latest, username: {username}")  # לוג פשוט
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} sent /latest, username: {username}")
     log_interaction(user_id, "/latest", username)
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
@@ -250,8 +253,9 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.username
-    logger.info(f"User {user_id} triggered sports_news, username: {username}")  # לוג פשוט
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} triggered sports_news, username: {username}")
     log_interaction(user_id, "sports_news", username)
     await query.answer()
     
@@ -283,7 +287,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if sport1_error:
-            message += f"**פרטי השגיאה:** {sport1_error}\n"
+            message += f"**פרטי השגיאה:** {sport5_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
@@ -302,8 +306,9 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
-    username = query.from_user.username
-    logger.info(f"User {user_id} triggered latest_news, username: {username}")  # לוג פשוט
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} triggered latest_news, username: {username}")
     log_interaction(user_id, "latest_news", username)
     await query.answer()
     
