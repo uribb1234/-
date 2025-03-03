@@ -22,7 +22,7 @@ NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
     'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',
     'walla': 'https://news.walla.co.il/',
-    'sport5': 'https://www.sport5.co.il/Ajax/GetNewsRoomTS.aspx'
+    'sport5': 'https://m.sport5.co.il/'
 }
 
 HEADERS = {
@@ -32,12 +32,10 @@ HEADERS = {
 # יצירת אפליקציית Flask
 app = Flask(__name__)
 
-# פונקציה להרצת שרת Flask
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# פונקציות של הבוט
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
@@ -90,36 +88,36 @@ def scrape_walla():
 
 def scrape_sport5():
     try:
-        url = NEWS_SITES['sport5']
-        response = requests.get(url, headers=HEADERS)
-        response.raise_for_status()
-        data = response.json()
-        articles = data.get('Items', []) if 'Items' in data else data
+        url = 'https://m.sport5.co.il/'
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
+        
+        articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
         results = []
         for item in articles[:3]:
-            time = item.get('time', item.get('date', 'ללא שעה'))
-            title = item.get('title', 'ללא כותרת')
-            link = item.get('link', '#')
+            link_tag = item.find('a', class_='item')
+            title_tag = item.find('h2', class_='post-title')
+            time_tag = item.find('em', class_='time')
+            
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else '#'
+            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            
             if link and not link.startswith('http'):
-                link = f"https://www.sport5.co.il/{link}"
+                link = f"https://m.sport5.co.il{link}"
             
             results.append({
                 'time': time,
                 'title': title,
                 'link': link
             })
+        
         logger.info(f"סקריפינג ספורט 5 הצליח: {len(results)} כתבות נשלפו")
-        return results
+        return results, None
     
-    except requests.exceptions.RequestException as e:
-        logger.error(f"שגיאה בבקשה ל-API של ספורט 5: {e}")
-        return [], f"תקלה בשרת: {str(e)}"
-    except ValueError as e:
-        logger.error(f"שגיאה בפענוח JSON מספורט 5: {e}")
-        return [], f"פורמט נתונים לא נתמך: {str(e)}"
     except Exception as e:
-        logger.error(f"שגיאה כללית בספורט 5: {e}")
+        logger.error(f"שגיאה בסקריפינג ספורט 5: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -153,7 +151,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש מבזקי ספורט... (הפונקציה עדיין בפיתוח, יתכנו תקלות)")
     
-    sport5_news, error_message = scrape_sport5()  # מקבלים גם את הודעת השגיאה
+    sport5_news, error_message = scrape_sport5()
     
     message = "🏀⚽ **מבזקי ספורט אחרונים - ספורט 5** 🏀⚽\n\n"
     if sport5_news:
@@ -176,11 +174,9 @@ def home():
 if __name__ == "__main__":
     logger.info("מתחיל את השרת והבוט...")
     
-    # הרצת שרת Flask ב-Thread נפרד
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-    # הרצת הבוט ב-Thread הראשי
     logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
     try:
         bot_app = Application.builder().token(TOKEN).build()
