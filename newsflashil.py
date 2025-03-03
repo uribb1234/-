@@ -117,7 +117,6 @@ def scrape_sport5():
         
         logger.info(f"סקריפינג ספורט 5 הצליח: {len(results)} כתבות נשלפו")
         return results, None
-    
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ספורט 5: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
@@ -151,7 +150,6 @@ def scrape_sport1():
         
         logger.info(f"סקריפינג ספורט 1 הצליח: {len(results)} כתבות נשלפו")
         return results, None
-    
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ספורט 1: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
@@ -168,8 +166,7 @@ def scrape_one():
         for item in articles[:3]:
             link_tag = item
             title_tag = item.find('h1')
-            # אין זמן מפורש בקטע הזה, נשתמש ב"ללא שעה" כברירת מחדל
-            time = 'ללא שעה'
+            time = 'ללא שעה'  # אין זמן בקטע ששלחת
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
@@ -185,7 +182,6 @@ def scrape_one():
         
         logger.info(f"סקריפינג ONE הצליח: {len(results)} כתבות נשלפו")
         return results, None
-    
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ONE: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
@@ -218,8 +214,6 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    await query.message.reply_text("מחפש מבזקי ספורט...")
     
     sport5_news, sport5_error = scrape_sport5()
     sport1_news, sport1_error = scrape_sport1()
@@ -303,14 +297,14 @@ if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.start()
     
-          logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
-      try:
-          bot_app = Application.builder().token(TOKEN).build()
-          bot_app.add_handler(CommandHandler("start", start))
-          bot_app.add_handler(CommandHandler("latest", latest))
-          bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
-          bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
-          logger.info("התחברתי לטלגרם בהצלחה!")
-          bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
-      except Exception as e:
-          logger.error(f"שגיאה בהרצת הבוט: {e}")
+    logger.info(f"מנסה להתחבר לטלגרם עם הטוקן: {TOKEN[:10]}...")
+    try:
+        bot_app = Application.builder().token(TOKEN).build()
+        bot_app.add_handler(CommandHandler("start", start))
+        bot_app.add_handler(CommandHandler("latest", latest))
+        bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+        bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
+        logger.info("התחברתי לטלגרם בהצלחה!")
+        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        logger.error(f"שגיאה בהרצת הבוט: {e}")
