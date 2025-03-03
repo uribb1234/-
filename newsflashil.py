@@ -4,10 +4,7 @@ import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask, request
-import threading
 import logging
-import asyncio
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -33,14 +30,8 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124'
 }
 
-# יצירת אפליקציית Flask
-app = Flask(__name__)
-
 # יצירת אפליקציית Telegram
 bot_app = Application.builder().token(TOKEN).build()
-
-# לולאת asyncio גלובלית
-loop = asyncio.new_event_loop()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -320,45 +311,8 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-@app.route('/webhook', methods=['POST'])
-async def webhook():
-    try:
-        update_json = request.get_json(force=True)
-        if not update_json:
-            logger.error("שגיאה: לא התקבל JSON מה-Webhook")
-            return "No data", 400
-        
-        update = Update.de_json(update_json, bot_app.bot)
-        if not update:
-            logger.error("שגיאה: עדכון לא תקין מה-Webhook")
-            return "Invalid update", 400
-        
-        await bot_app.process_update(update)
-        return "OK"
-    except Exception as e:
-        logger.error(f"שגיאה בעיבוד Webhook: {e}")
-        return "Error", 500
-
-# פונקציה להגדרת ה-Webhook
-async def set_webhook():
-    webhook_url = f"https://{os.getenv('RENDER_EXTERNAL_HOSTNAME')}/webhook"
-    if not os.getenv("RENDER_EXTERNAL_HOSTNAME"):
-        logger.error("שגיאה: RENDER_EXTERNAL_HOSTNAME לא מוגדר!")
-        exit(1)
-    await bot_app.bot.setWebhook(webhook_url)
-    logger.info(f"Webhook הוגדר ל: {webhook_url}")
-
-# פונקציה לריצת לולאת ה-asyncio בשרשור נפרד
-def run_loop():
-    asyncio.set_event_loop(loop)
-    loop.run_forever()
-
 if __name__ == "__main__":
-    logger.info("מתחיל את השרת והבוט...")
+    logger.info("מתחיל את הבוט עם Polling...")
     
     # הגדרת המטפלים
     bot_app.add_handler(CommandHandler("start", start))
@@ -367,16 +321,5 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הרצת לולאת ה-asyncio בשרשור נפרד
-    threading.Thread(target=run_loop, daemon=True).start()
-
-    # איתחול ה-Application והגדרת ה-Webhook
-    async def initialize_and_set_webhook():
-        await bot_app.initialize()  # איתחול ה-Application
-        await set_webhook()         # הגדרת ה-Webhook
-
-    asyncio.run_coroutine_threadsafe(initialize_and_set_webhook(), loop)
-
-    # הרצת Flask
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    # איתחול והרצת Polling
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
