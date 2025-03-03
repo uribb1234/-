@@ -22,7 +22,8 @@ NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
     'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',
     'walla': 'https://news.walla.co.il/',
-    'sport5': 'https://m.sport5.co.il/'
+    'sport5': 'https://m.sport5.co.il/',
+    'sport1': 'https://sport1.maariv.co.il/'
 }
 
 HEADERS = {
@@ -120,6 +121,41 @@ def scrape_sport5():
         logger.error(f"שגיאה בסקריפינג ספורט 5: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
+def scrape_sport1():
+    try:
+        url = 'https://sport1.maariv.co.il/'
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
+        
+        # מציאת הכתבות מהרשימה של "hot-news-container"
+        articles = soup.select('div.hot-news-container article.article-card')
+        
+        results = []
+        for item in articles[:3]:  # לוקחים עד 3 כתבות
+            link_tag = item.find_parent('a', class_='image-wrapper')  # הקישור נמצא ב-<a> שמעל ה-<article>
+            title_tag = item.find('h3', class_='article-card-title')
+            time_tag = item.find('time', class_='entry-date')
+            
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else '#'
+            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            
+            if link and not link.startswith('http'):
+                link = f"https://sport1.maariv.co.il{link}"
+            
+            results.append({
+                'time': time,
+                'title': title,
+                'link': link
+            })
+        
+        logger.info(f"סקריפינג ספורט 1 הצליח: {len(results)} כתבות נשלפו")
+        return results, None
+    
+    except Exception as e:
+        logger.error(f"שגיאה בסקריפינג ספורט 1: {e}")
+        return [], f"שגיאה לא ידועה: {str(e)}"
+
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
@@ -151,7 +187,8 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש מבזקי ספורט... (הפונקציה עדיין בפיתוח, יתכנו תקלות)")
     
-    sport5_news, error_message = scrape_sport5()
+    sport5_news, sport5_error = scrape_sport5()
+    sport1_news, sport1_error = scrape_sport1()
     
     message = "**ספורט 5**\n"
     if sport5_news:
@@ -162,13 +199,23 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
-        if error_message:
-            message += f"**פרטי השגיאה:** {error_message}\n"
+        if sport5_error:
+            message += f"**פרטי השגיאה:** {sport5_error}\n"
     
-    message += "\n**ספורט 1**\n(בעבודה)\n"
+    message += "\n**ספורט 1**\n"
+    if sport1_news:
+        for idx, article in enumerate(sport1_news[:3], 1):
+            if 'time' in article:
+                message += f"{idx}. {article['time']} - [{article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += "לא ניתן למצוא מבזקים\n"
+        if sport1_error:
+            message += f"**פרטי השגיאה:** {sport1_error}\n"
+    
     message += "\n**ONE**\n(בעבודה)\n"
     
-    # הוספת לחצן חזרה לעמוד ראשי
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -217,7 +264,7 @@ if __name__ == "__main__":
         bot_app.add_handler(CommandHandler("start", start))
         bot_app.add_handler(CommandHandler("latest", latest))
         bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
-        bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))  # הוספת handler ללחצן החזרה
+        bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
         logger.info("התחברתי לטלגרם בהצלחה!")
         bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     except Exception as e:
