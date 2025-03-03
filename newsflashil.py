@@ -153,17 +153,21 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     sport5_news, error_message = scrape_sport5()
     
-    message = "🏀⚽ **מבזקי ספורט אחרונים - ספורט 5** 🏀⚽\n\n"
+    message = "**ספורט 5**\n"
     if sport5_news:
         for idx, article in enumerate(sport5_news[:3], 1):
             if 'time' in article:
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                message += f"{idx}. {article['time']} - [{article['title']}]({article['link']})\n"
             else:
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if error_message:
-            message += f"**פרטי השגיאה:** {error_message}"
+            message += f"**פרטי השגיאה:** {error_message}\n"
+    
+    # הוספת כותרות לאתרי ספורט נוספים
+    message += "\n**ספורט 1**\n(בעבודה)\n"
+    message += "\n**ONE**\n(בעבודה)\n"
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
