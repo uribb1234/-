@@ -166,7 +166,7 @@ def scrape_one():
         for item in articles[:3]:
             link_tag = item
             title_tag = item.find('h1')
-            time = 'ללא שעה'  # אין זמן בקטע ששלחת
+            time = 'ללא שעה'  # נשאר פנימית עבורי, לא יוצג למשתמש
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
@@ -215,6 +215,8 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
+    await query.message.reply_text("מחפש מבזקי ספורט...")
+    
     sport5_news, sport5_error = scrape_sport5()
     sport1_news, sport1_error = scrape_sport1()
     one_news, one_error = scrape_one()
@@ -246,10 +248,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += "\n**ONE**\n"
     if one_news:
         for idx, article in enumerate(one_news[:3], 1):
-            if 'time' in article:
-                message += f"{idx}. {article['time']} - [{article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. [{article['title']}]({article['link']})\n"
+            message += f"{idx}. [{article['title']}]({article['link']})\n"  # הסרת "ללא שעה" מהתצוגה
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if one_error:
