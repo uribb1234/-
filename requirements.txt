@@ -3,4 +3,4 @@ requests
 beautifulsoup4
 python-telegram-bot>=20.0
 flask
-pandas
+curl-cffi
