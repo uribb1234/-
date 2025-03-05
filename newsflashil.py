@@ -233,9 +233,15 @@ def scrape_geektime():
             'Upgrade-Insecure-Requests': '1'
         }
         
-        # יצירת scraper עם הכותרות המשופרות
+        # הגדרת פרוקסי ישראלי
+        proxies = {
+            'http': 'http://51.16.40.63:3128',
+            'https': 'http://51.16.40.63:3128'
+        }
+        
+        # יצירת scraper עם תמיכה בפרוקסי
         scraper = cloudscraper.create_scraper()
-        response = scraper.get(NEWS_SITES['geektime'], headers=headers)
+        response = scraper.get(NEWS_SITES['geektime'], headers=headers, proxies=proxies)
         logger.info(f"Geektime response status: {response.status_code}")
         
         # בדיקת תגובה
