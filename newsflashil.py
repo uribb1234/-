@@ -1,7 +1,6 @@
 import os
+import cloudscraper
 import requests
-import time
-import random
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -31,13 +30,7 @@ NEWS_SITES = {
 }
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Referer': 'https://www.google.com/'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124'
 }
 
 # יצירת אפליקציית Flask דמה
@@ -85,8 +78,8 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def scrape_ynet():
     try:
-        response = requests.get(NEWS_SITES['ynet'], headers=HEADERS, timeout=2)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=HEADERS).text, 'html.parser')
         return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
     except Exception as e:
         logger.error(f"שגיאה ב-Ynet: {e}")
@@ -94,7 +87,7 @@ def scrape_ynet():
 
 def scrape_arutz7():
     try:
-        response = requests.get(NEWS_SITES['arutz7'], headers=HEADERS, timeout=2)
+        response = requests.get(NEWS_SITES['arutz7'], headers=HEADERS)
         response.raise_for_status()
         data = response.json()
         items = data.get('Items', []) if 'Items' in data else data
@@ -111,8 +104,8 @@ def scrape_arutz7():
 
 def scrape_walla():
     try:
-        response = requests.get(NEWS_SITES['walla'], headers=HEADERS, timeout=2)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['walla'], headers=HEADERS).text, 'html.parser')
         items = soup.select_one('div.top-section-newsflash.no-mobile').select('a') if soup.select_one('div.top-section-newsflash.no-mobile') else []
         results = []
         for item in items:
@@ -133,8 +126,8 @@ def scrape_walla():
 def scrape_sport5():
     try:
         url = 'https://m.sport5.co.il/'
-        response = requests.get(url, headers=HEADERS, timeout=2)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
         
         articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
@@ -166,8 +159,8 @@ def scrape_sport5():
 def scrape_sport1():
     try:
         url = 'https://sport1.maariv.co.il/'
-        response = requests.get(url, headers=HEADERS, timeout=2)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
         
         articles = soup.select('div.hot-news-container article.article-card')
         
@@ -199,8 +192,8 @@ def scrape_sport1():
 def scrape_one():
     try:
         url = 'https://m.one.co.il/mobile/'
-        response = requests.get(url, headers=HEADERS, timeout=2)
-        soup = BeautifulSoup(response.text, 'html.parser')
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
         
         articles = soup.select('a.mobile-hp-article-plain')
         
@@ -230,29 +223,19 @@ def scrape_one():
 
 def scrape_geektime():
     try:
-        # בקשה ישירה עם כותרות מתקדמות
-        response = requests.get(NEWS_SITES['geektime'], headers=HEADERS, timeout=1)
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(NEWS_SITES['geektime'], headers=HEADERS)
         logger.info(f"Geektime response status: {response.status_code}")
-        
-        if response.status_code == 403:
-            logger.warning("Geektime חסם את הבקשה (403), מנסה שוב עם עיכוב קל")
-            time.sleep(random.uniform(0.1, 0.5))  # עיכוב קל של 0.1-0.5 שניות
-            response = requests.get(NEWS_SITES['geektime'], headers=HEADERS, timeout=1)
-            logger.info(f"Geektime retry status: {response.status_code}")
-        
-        if response.status_code != 200:
-            return [], f"שגיאה: קוד סטטוס {response.status_code}"
-        
         soup = BeautifulSoup(response.text, 'html.parser')
         logger.info(f"Geektime HTML length: {len(response.text)} characters")
         
-        articles = soup.select('article.card-cat')[:3]  # שליפת 3 כתבות
+        articles = soup.select('article.card-cat')[:3]  # שליפת 3 כתבות מה-<article class="card-cat">
         logger.info(f"Found {len(articles)} article.card-cat elements")
         
         results = []
         for idx, article in enumerate(articles):
-            title = article.get('data-title')
-            link_tag = article.select_one('div.card_thumb a')
+            title = article.get('data-title')  # שימוש ב-data-title לכותרת
+            link_tag = article.select_one('div.card_thumb a')  # חיפוש ה-<a> בתוך div.card_thumb
             if title and link_tag:
                 link = link_tag['href']
                 if not link.startswith('http'):
