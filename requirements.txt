@@ -6,3 +6,4 @@ flask
 pandas
 openpyxl
 feedparser
+requests-html
