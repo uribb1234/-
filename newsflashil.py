@@ -2,8 +2,8 @@ import os
 import cloudscraper
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup  # ייבוא מ-telegram
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes  # ייבוא מ-telegram.ext
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from flask import Flask
 import threading
 import logging
