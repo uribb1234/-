@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
+import feedparser  # נוסף עבור RSS
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -26,7 +27,7 @@ NEWS_SITES = {
     'sport5': 'https://m.sport5.co.il/',
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
-    'geektime': 'https://www.geektime.co.il/'
+    'geektime': 'https://www.geektime.co.il/feed/'  # שונה ל-RSS Feed
 }
 
 HEADERS = {
@@ -146,7 +147,7 @@ def scrape_sport5():
             
             results.append({
                 'time': time,
-                'title':  title,
+                'title': title,
                 'link': link
             })
         
@@ -223,32 +224,25 @@ def scrape_one():
 
 def scrape_geektime():
     try:
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(NEWS_SITES['geektime'], headers=HEADERS)
-        logger.info(f"Geektime response status: {response.status_code}")
-        soup = BeautifulSoup(response.text, 'html.parser')
-        logger.info(f"Geektime HTML length: {len(response.text)} characters")
-        
-        articles = soup.select('article.card-cat')[:3]  # שליפת 3 כתבות מה-<article class="card-cat">
-        logger.info(f"Found {len(articles)} article.card-cat elements")
+        # שליפת ה-RSS Feed של Geektime
+        feed = feedparser.parse(NEWS_SITES['geektime'])
+        logger.info(f"Geektime RSS feed entries: {len(feed.entries)}")
         
         results = []
-        for idx, article in enumerate(articles):
-            title = article.get('data-title')  # שימוש ב-data-title לכותרת
-            link_tag = article.select_one('div.card_thumb a')  # חיפוש ה-<a> בתוך div.card_thumb
-            if title and link_tag:
-                link = link_tag['href']
-                if not link.startswith('http'):
-                    link = f"https://www.geektime.co.il{link}"
-                results.append({'title': title, 'link': link})
-                logger.info(f"Article {idx+1}: title='{title}', link='{link}'")
-            else:
-                logger.info(f"Article {idx+1}: Missing title or link (title='{title}', link_tag={link_tag})")
+        for entry in feed.entries[:3]:  # שליפת 3 הכתבות הראשונות
+            title = entry.get('title', 'ללא כותרת')
+            link = entry.get('link', '#')
+            results.append({'title': title, 'link': link})
+            logger.info(f"Article: title='{title}', link='{link}'")
         
-        logger.info(f"סקריפינג Geektime הצליח: {len(results)} כתבות נשלפו")
+        if not results:
+            logger.warning("לא נמצאו כתבות ב-RSS של Geektime")
+            return [], "לא נמצאו כתבות ב-RSS"
+        
+        logger.info(f"סקריפינג Geektime (RSS) הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג Geektime: {str(e)}")
+        logger.error(f"שגיאה בסקריפינג Geektime (RSS): {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
