@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-import feedparser  # עבור RSS
+from requests_html import HTMLSession  # נוסף עבור ערוץ 14
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -28,11 +28,14 @@ NEWS_SITES = {
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
-    'channel14': 'https://www.now14.co.il/feed/'  # RSS של ערוץ 14
+    'channel14': 'https://www.now14.co.il/'  # עמוד ראשי במקום RSS
 }
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Referer': 'https://www.google.com/'
 }
 
 # יצירת אפליקציית Flask דמה
@@ -264,31 +267,51 @@ def scrape_ynet_tech():
 
 def scrape_channel14():
     try:
-        feed = feedparser.parse(NEWS_SITES['channel14'])
-        logger.info(f"Channel 14 RSS feed status: {feed.get('status', 'לא זמין')}")
-        logger.info(f"Channel 14 RSS feed entries: {len(feed.entries)}")
+        # שימוש ב-HTMLSession לטעינת העמוד עם תמיכה ב-JavaScript
+        session = HTMLSession()
+        response = session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=1)
+        response.html.render(timeout=5, sleep=0.5)  # עיבוד JavaScript קצר
         
-        if not feed.entries:
-            logger.warning("לא נמצאו כתבות ב-RSS של ערוץ 14")
-            return [], "לא נמצאו כתבות ב-RSS"
+        logger.info(f"Channel 14 response status: {response.status_code}")
+        logger.info(f"Channel 14 HTML length: {len(response.html.html)} characters")
+        
+        if response.status_code != 200:
+            logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
+            return [], f"שגיאת {response.status_code}: הגישה נחסמה"
+        
+        soup = BeautifulSoup(response.html.html, 'html.parser')
+        
+        # שליפת כתבות מהעמוד הראשי (בהתבסס על מבנה אפשרי)
+        articles = soup.select('article.post')[:3]  # התאמה לדוגמה נפוצה, ייתכן שצריך להתאים
+        logger.info(f"Found {len(articles)} articles in Channel 14")
         
         results = []
-        for entry in feed.entries[:3]:
-            title = entry.get('title', 'ללא כותרת')
-            link = entry.get('link', '#')
-            time = entry.get('published', 'ללא שעה')
-            if time:
-                try:
-                    time = time.split('+')[0].strip()
-                except:
-                    time = 'ללא שעה'
-            results.append({'title': title, 'link': link, 'time': time})
-            logger.info(f"Article: title='{title}', link='{link}', time='{time}'")
+        for idx, article in enumerate(articles):
+            title_tag = article.select_one('h2.entry-title a') or article.select_one('h3 a')
+            time_tag = article.select_one('time.entry-date')
+            
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = title_tag['href'] if title_tag else '#'
+            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            
+            if not link.startswith('http'):
+                link = f"https://www.now14.co.il{link}"
+            
+            results.append({
+                'title': title,
+                'link': link,
+                'time': time
+            })
+            logger.info(f"Article {idx+1}: title='{title}', link='{link}', time='{time}'")
         
-        logger.info(f"סקריפינג ערוץ 14 (RSS) הצליח: {len(results)} כתבות נשלפו")
+        if not results:
+            logger.warning("לא נמצאו כתבות בערוץ 14")
+            return [], "לא נמצאו כתבות"
+        
+        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ערוץ 14 (RSS): {str(e)}")
+        logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
