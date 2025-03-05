@@ -7,7 +7,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-from requests_html import AsyncHTMLSession  # שינוי ל-AsyncHTMLSession
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -28,7 +27,7 @@ NEWS_SITES = {
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
-    'channel14': 'https://www.now14.co.il/'
+    'kan11': 'https://www.kan.org.il/lobby/news/'  # עמוד ה-HTML של כאן 11
 }
 
 HEADERS = {
@@ -265,35 +264,35 @@ def scrape_ynet_tech():
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
-async def scrape_channel14():
+def scrape_kan11():
     try:
-        session = AsyncHTMLSession()
-        response = await session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=1)
-        await response.html.arender(timeout=5, sleep=0.5)  # שימוש ב-arender עבור אסינכרוניות
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(NEWS_SITES['kan11'], headers=HEADERS, timeout=1)
         
-        logger.info(f"Channel 14 response status: {response.status_code}")
-        logger.info(f"Channel 14 HTML length: {len(response.html.html)} characters")
+        logger.info(f"Kan 11 response status: {response.status_code}")
+        logger.info(f"Kan 11 HTML length: {len(response.text)} characters")
         
         if response.status_code != 200:
-            logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
+            logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        soup = BeautifulSoup(response.html.html, 'html.parser')
+        soup = BeautifulSoup(response.text, 'html.parser')
         
-        articles = soup.select('article.post')[:3]
-        logger.info(f"Found {len(articles)} articles in Channel 14")
+        articles = soup.select('div.main-news .article')[:3]  # שליפת עד 3 כתבות
+        logger.info(f"Found {len(articles)} articles in Kan 11")
         
         results = []
         for idx, article in enumerate(articles):
-            title_tag = article.select_one('h2.entry-title a') or article.select_one('h3 a')
-            time_tag = article.select_one('time.entry-date')
+            link_tag = article.select_one('a')
+            title_tag = article.select_one('div.article__content-title')
+            time_tag = article.select_one('div.article__content-date')
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = title_tag['href'] if title_tag else '#'
+            link = link_tag['href'] if link_tag else '#'
             time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             
             if not link.startswith('http'):
-                link = f"https://www.now14.co.il{link}"
+                link = f"https://www.kan.org.il{link}"
             
             results.append({
                 'title': title,
@@ -303,13 +302,13 @@ async def scrape_channel14():
             logger.info(f"Article {idx+1}: title='{title}', link='{link}', time='{time}'")
         
         if not results:
-            logger.warning("לא נמצאו כתבות בערוץ 14")
+            logger.warning("לא נמצאו כתבות בכאן 11")
             return [], "לא נמצאו כתבות"
         
-        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} כתבות נשלפו")
+        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
+        logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -440,23 +439,24 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
-    channel14_news, channel14_error = await scrape_channel14()  # קריאה אסינכרונית
+    kan11_news, kan11_error = scrape_kan11()
     
     message = "**חדשות מערוצי טלוויזיה**\n\n"
-    message += "**כאן 11**: (הערה: הפונקציה עדיין בבנייה)\n"
-    message += "**קשת 12**: (הערה: הפונקציה עדיין בבנייה)\n"
-    message += "**רשת 13**: (הערה: הפונקציה עדיין בבנייה)\n"
-    message += "**עכשיו 14**:\n"
-    if channel14_news:
-        for idx, article in enumerate(channel14_news[:3], 1):
+    message += "**כאן 11**:\n"
+    if kan11_news:
+        for idx, article in enumerate(kan11_news[:3], 1):
             if 'time' in article:
                 message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
             else:
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
-        if channel14_error:
-            message += f"**פרטי השגיאה:** {channel14_error}\n"
+        if kan11_error:
+            message += f"**פרטי השגיאה:** {kan11_error}\n"
+    
+    message += "**קשת 12**: (הערה: הפונקציה עדיין בבנייה)\n"
+    message += "**רשת 13**: (הערה: הפונקציה עדיין בבנייה)\n"
+    message += "**עכשיו 14**: (הערה: הפונקציה עדיין בבנייה)\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
