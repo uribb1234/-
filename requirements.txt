@@ -1,7 +1,7 @@
-cloudscraper
++cloudscraper
 requests
 beautifulsoup4
-telegram
+python-telegram-bot>=20.0
 flask
 feedparser
 requests-html
