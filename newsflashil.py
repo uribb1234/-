@@ -7,7 +7,6 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-import feedparser  # עבור RSS
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -27,7 +26,7 @@ NEWS_SITES = {
     'sport5': 'https://m.sport5.co.il/',
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
-    'geektime': 'https://www.geektime.co.il/feed/'  # RSS Feed
+    'ynet_tech': 'https://www.ynet.co.il/digital/technews'  # Ynet חדשות טכנולוגיה
 }
 
 HEADERS = {
@@ -222,36 +221,44 @@ def scrape_one():
         logger.error(f"שגיאה בסקריפינג ONE: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
-def scrape_geektime():
+def scrape_ynet_tech():
     try:
-        # שליפת ה-RSS Feed של Geektime
-        feed = feedparser.parse(NEWS_SITES['geektime'])
-        logger.info(f"Geektime RSS feed status: {feed.get('status', 'לא זמין')}")
-        logger.info(f"Geektime RSS feed entries: {len(feed.entries)}")
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet_tech'], headers=HEADERS, timeout=1).text, 'html.parser')
+        logger.info(f"Ynet Tech HTML length: {len(soup.text)} characters")
         
-        if not feed.entries:
-            logger.warning("לא נמצאו כתבות ב-RSS של Geektime")
-            return [], "לא נמצאו כתבות ב-RSS"
+        # שליפת כתבות מה-slotView
+        articles = soup.select('div.slotView')[:3]  # שליפת 3 הכתבות הראשונות
+        logger.info(f"Found {len(articles)} articles in Ynet Tech")
         
         results = []
-        for entry in feed.entries[:3]:  # שליפת 3 הכתבות הראשונות
-            title = entry.get('title', 'ללא כותרת')
-            link = entry.get('link', '#')
-            # הוספת זמן אם קיים (pubDate)
-            time = entry.get('published', 'ללא שעה')
-            if time:
-                try:
-                    # נסה לפצל את הזמן לפורמט קריא
-                    time = time.split('+')[0].strip()  # מסיר את אזור הזמן
-                except:
-                    time = 'ללא שעה'
-            results.append({'title': title, 'link': link, 'time': time})
-            logger.info(f"Article: title='{title}', link='{link}', time='{time}'")
+        for idx, article in enumerate(articles):
+            title_tag = article.select_one('div.slotTitle a')
+            link_tag = title_tag  # הקישור נמצא באותו תגית של הכותרת
+            time_tag = article.select_one('span.dateView')
+            
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else '#'
+            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            
+            if not link.startswith('http'):
+                link = f"https://www.ynet.co.il{link}"
+            
+            results.append({
+                'title': title,
+                'link': link,
+                'time': time
+            })
+            logger.info(f"Article {idx+1}: title='{title}', link='{link}', time='{time}'")
         
-        logger.info(f"סקריפינג Geektime (RSS) הצליח: {len(results)} כתבות נשלפו")
+        if not results:
+            logger.warning("לא נמצאו כתבות ב-Ynet Tech")
+            return [], "לא נמצאו כתבות"
+        
+        logger.info(f"סקריפינג Ynet Tech הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג Geektime (RSS): {str(e)}")
+        logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -351,19 +358,19 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש חדשות טכנולוגיה...")
     
-    geektime_news, geektime_error = scrape_geektime()
+    ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
     
-    message = "**Geektime**\n"
-    if geektime_news:
-        for idx, article in enumerate(geektime_news[:3], 1):
+    message = "**Ynet Tech**\n"
+    if ynet_tech_news:
+        for idx, article in enumerate(ynet_tech_news[:3], 1):
             if 'time' in article:
                 message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
             else:
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
-        if geektime_error:
-            message += f"**פרטי השגיאה:** {geektime_error}\n"
+        if ynet_tech_error:
+            message += f"**פרטי השגיאה:** {ynet_tech_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
