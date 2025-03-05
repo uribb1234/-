@@ -1,6 +1,7 @@
 import os
 import cloudscraper
 import requests
+import random
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -29,8 +30,22 @@ NEWS_SITES = {
     'geektime': 'https://www.geektime.co.il/'
 }
 
+# רשימת User-Agents מתחלפים
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0'
+]
+
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124'
+    'User-Agent': random.choice(USER_AGENTS),
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': 'https://www.google.com/'
 }
 
 # יצירת אפליקציית Flask דמה
@@ -223,19 +238,29 @@ def scrape_one():
 
 def scrape_geektime():
     try:
+        # עדכון User-Agent רנדומלי בכל קריאה
+        headers = HEADERS.copy()
+        headers['User-Agent'] = random.choice(USER_AGENTS)
+        
+        # יצירת scraper עם ניהול Cookies
         scraper = cloudscraper.create_scraper()
-        response = scraper.get(NEWS_SITES['geektime'], headers=HEADERS)
+        response = scraper.get(NEWS_SITES['geektime'], headers=headers, timeout=1)
         logger.info(f"Geektime response status: {response.status_code}")
+        
+        if response.status_code == 403:
+            logger.warning(f"Geektime חסם את הבקשה (403). תגובה: {response.text[:200]}")
+            return [], "שגיאת 403: הגישה נחסמה על ידי האתר"
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         logger.info(f"Geektime HTML length: {len(response.text)} characters")
         
-        articles = soup.select('article.card-cat')[:3]  # שליפת 3 כתבות מה-<article class="card-cat">
+        articles = soup.select('article.card-cat')[:3]  # שליפת 3 כתבות
         logger.info(f"Found {len(articles)} article.card-cat elements")
         
         results = []
         for idx, article in enumerate(articles):
-            title = article.get('data-title')  # שימוש ב-data-title לכותרת
-            link_tag = article.select_one('div.card_thumb a')  # חיפוש ה-<a> בתוך div.card_thumb
+            title = article.get('data-title')
+            link_tag = article.select_one('div.card_thumb a')
             if title and link_tag:
                 link = link_tag['href']
                 if not link.startswith('http'):
