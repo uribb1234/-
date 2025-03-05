@@ -224,21 +224,31 @@ def scrape_one():
 def scrape_geektime():
     try:
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['geektime'], headers=HEADERS).text, 'html.parser')
-        articles = soup.select('h3.card__title')[:3]  # שליפת הכותרות ישירות מ-h3.card__title
+        response = scraper.get(NEWS_SITES['geektime'], headers=HEADERS)
+        logger.info(f"Geektime response status: {response.status_code}")
+        soup = BeautifulSoup(response.text, 'html.parser')
+        logger.info(f"Geektime HTML length: {len(response.text)} characters")
+        
+        articles = soup.select('h3.card__title')[:3]
+        logger.info(f"Found {len(articles)} h3.card__title elements")
+        
         results = []
-        for item in articles:
-            parent_a = item.find_parent('a')  # מציאת ה-<a> שמכיל את הקישור
+        for idx, item in enumerate(articles):
+            parent_a = item.find_parent('a')
             if parent_a:
                 title = item.get_text(strip=True)
                 link = parent_a['href']
                 if not link.startswith('http'):
                     link = f"https://www.geektime.co.il{link}"
                 results.append({'title': title, 'link': link})
+                logger.info(f"Article {idx+1}: title='{title}', link='{link}'")
+            else:
+                logger.info(f"Article {idx+1}: No parent <a> found for h3.card__title")
+        
         logger.info(f"סקריפינג Geektime הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג Geektime: {e}")
+        logger.error(f"שגיאה בסקריפינג Geektime: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -267,7 +277,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     
     keyboard = [
-        [InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],  # שינוי כותרת
         [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -382,7 +392,7 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     
     keyboard = [
-        [InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],  # שינוי כותרת
         [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
