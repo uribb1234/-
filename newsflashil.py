@@ -31,10 +31,15 @@ NEWS_SITES = {
 }
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.5',
-    'Referer': 'https://www.google.com/'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://www.kan.org.il/',
+    'Connection': 'keep-alive',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin'
 }
 
 # יצירת אפליקציית Flask דמה
@@ -267,12 +272,12 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         scraper = cloudscraper.create_scraper()
-        logger.info(f"Sending User-Agent to Kan 11 API: {HEADERS['User-Agent']}")  # לוג של ה-User-Agent שנשלח
+        logger.info(f"Sending User-Agent to Kan 11 API: {HEADERS['User-Agent']}")
         response = scraper.get(NEWS_SITES['kan11'], headers=HEADERS, timeout=1)
         
         logger.info(f"Kan 11 API response status: {response.status_code}")
-        logger.info(f"Kan 11 API response headers: {response.headers}")  # כותרות שהשרת מחזיר
-        logger.info(f"Kan 11 API response content: {response.text[:500]}")  # 500 תווים ראשונים של התגובה
+        logger.info(f"Kan 11 API response headers: {response.headers}")
+        logger.info(f"Kan 11 API response content: {response.text[:500]}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
@@ -292,7 +297,7 @@ def scrape_kan11():
             link = item.get('Link', '#')
             time = item.get('Date', 'ללא שעה')
             if time and isinstance(time, str):
-                time = time.replace('T', ' ')[:16]  # פורמט כמו "2025-03-05 13:00"
+                time = time.replace('T', ' ')[:16]
             results.append({'title': title, 'link': link, 'time': time})
             logger.info(f"Article: title='{title}', link='{link}', time='{time}'")
         
