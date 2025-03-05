@@ -37,7 +37,7 @@ BASE_HEADERS = {
     'Referer': 'https://www.google.com/'
 }
 
-# כותרות מותאמות לדפדפן שלך עבור כאן 11
+# כותרות מותאמות לדפדפן שלך עבור כאן 11 עם עוגיית cf_clearance
 API_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -45,7 +45,8 @@ API_HEADERS = {
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'max-age=0',
     'Referer': 'https://www.kan.org.il/',
-    'Connection': 'keep-alive'  # הוספתי כי דפדפנים בדרך כלל שולחים את זה
+    'Connection': 'keep-alive',
+    'Cookie': 'cf_clearance=z2ZOZFGpkXPfVCtx9xW8Ma8j_rejqSMA8JuFmd7ak_M-1741208476-1.2.1.1-k5gdPIWfIl2W9XwwFXt.HSCQspuT7MRDZkpmE5UENRLT2FTs_Swtn4zrGULc3yPYKxfjX5Im4YVvEaWr1zxC8_KhVGVRbd_KTuTpnZnKbktM6DocPBqkDyJxuNJfaCzdyHkhvdM6r5MZECO.RQYXYwGgw.lD8NpLLvyrcNdvD4BJ88yYu7X0Lw8SczQ.H1.QP7gqnN5zwC93WU1UUC0a9VXu_TF98Quwoj86cbzC7UMySAlp0lQwENXPgzDiblPXWtIWccb9PrnJjrZIEW8D2nprzCpSTGi7DKzNb78b0kyavNypB7ODoHRs0Hq9HDbxOej3UBXvILst457P7Whi94hR24XogSaBG.1DVxEmdJJ_LSeBfFgbj8iMaTgYn0CyQchSWZ83OUyD4qTUwC9lx7JeI1hSGW7RNvN9NtF0UC8'
 }
 
 # יצירת אפליקציית Flask דמה
