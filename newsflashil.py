@@ -27,27 +27,25 @@ NEWS_SITES = {
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
-    'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579'  # API של כאן 11
+    'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579'
 }
 
-# כותרות בסיסיות עבור אתרים רגילים וערוץ 7
+# כותרות בסיסיות עבור ערוץ 7 ואתרים רגילים
 BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Accept': 'application/json',
-    'Referer': 'https://www.inn.co.il/'
+    'Referer': 'https://www.google.com/'
 }
 
-# כותרות משופרות עבור API של כאן 11
+# כותרות מותאמות לדפדפן שלך עבור כאן 11
 API_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br, zstd',
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
+    'Cache-Control': 'max-age=0',
     'Referer': 'https://www.kan.org.il/',
-    'Connection': 'keep-alive',
-    'Sec-Fetch-Dest': 'empty',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Site': 'same-origin'
+    'Connection': 'keep-alive'  # הוספתי כי דפדפנים בדרך כלל שולחים את זה
 }
 
 # יצירת אפליקציית Flask דמה
@@ -106,7 +104,6 @@ def scrape_arutz7():
     try:
         response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS)
         logger.info(f"Arutz 7 API response status: {response.status_code}")
-        logger.info(f"Arutz 7 API response content: {response.text[:500]}")  # לוג לתגובה
         response.raise_for_status()
         data = response.json()
         items = data.get('Items', []) if 'Items' in data else data
