@@ -27,7 +27,7 @@ NEWS_SITES = {
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
-    'kan11': 'https://www.kan.org.il/lobby/news/'  # עמוד ה-HTML של כאן 11
+    'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579'  # API של כאן 11
 }
 
 HEADERS = {
@@ -135,6 +135,7 @@ def scrape_sport5():
         
         articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
+ ___________
         results = []
         for item in articles[:3]:
             link_tag = item.find('a', class_='item')
@@ -267,48 +268,39 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         scraper = cloudscraper.create_scraper()
+        logger.info(f"Sending User-Agent to Kan 11 API: {HEADERS['User-Agent']}")  # לוג של ה-User-Agent שנשלח
         response = scraper.get(NEWS_SITES['kan11'], headers=HEADERS, timeout=1)
         
-        logger.info(f"Kan 11 response status: {response.status_code}")
-        logger.info(f"Kan 11 HTML length: {len(response.text)} characters")
+        logger.info(f"Kan 11 API response status: {response.status_code}")
+        logger.info(f"Kan 11 API response headers: {response.headers}")  # כותרות שהשרת מחזיר
+        logger.info(f"Kan 11 API response content: {response.text[:500]}")  # 500 תווים ראשונים של התגובה
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        soup = BeautifulSoup(response.text, 'html.parser')
+        data = response.json()
+        items = data.get('Items', [])
+        logger.info(f"Kan 11 API returned {len(items)} items")
         
-        articles = soup.select('div.main-news .article')[:3]  # שליפת עד 3 כתבות
-        logger.info(f"Found {len(articles)} articles in Kan 11")
+        if not items:
+            logger.warning("לא נמצאו כתבות ב-API של כאן 11")
+            return [], "לא נמצאו כתבות ב-API"
         
         results = []
-        for idx, article in enumerate(articles):
-            link_tag = article.select_one('a')
-            title_tag = article.select_one('div.article__content-title')
-            time_tag = article.select_one('div.article__content-date')
-            
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else '#'
-            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            
-            if not link.startswith('http'):
-                link = f"https://www.kan.org.il{link}"
-            
-            results.append({
-                'title': title,
-                'link': link,
-                'time': time
-            })
-            logger.info(f"Article {idx+1}: title='{title}', link='{link}', time='{time}'")
+        for item in items[:3]:
+            title = item.get('Title', 'ללא כותרת')
+            link = item.get('Link', '#')
+            time = item.get('Date', 'ללא שעה')
+            if time and isinstance(time, str):
+                time = time.replace('T', ' ')[:16]  # פורמט כמו "2025-03-05 13:00"
+            results.append({'title': title, 'link': link, 'time': time})
+            logger.info(f"Article: title='{title}', link='{link}', time='{time}'")
         
-        if not results:
-            logger.warning("לא נמצאו כתבות בכאן 11")
-            return [], "לא נמצאו כתבות"
-        
-        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} כתבות נשלפו")
+        logger.info(f"סקריפינג כאן 11 (API) הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
+        logger.error(f"שגיאה בסקריפינג כאן 11 (API): {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -381,8 +373,8 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
-        if sport1_error:
-            message += f"**פרטי השגיאה:** {sport1_error}\n"
+        if sport5_error:
+            message += f"**פרטי השגיאה:** {sport5_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
