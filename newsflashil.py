@@ -73,7 +73,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("הנה הנתונים שלך!")
         os.remove(filename)
     except Exception as e:
-        logger,error(f"שגיאה בשליחת הקובץ: {e}")
+        logger.error(f"שגיאה בשליחת הקובץ: {e}")
         await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
 
 def scrape_ynet():
@@ -225,7 +225,7 @@ def scrape_geektime():
     try:
         scraper = cloudscraper.create_scraper()
         soup = BeautifulSoup(scraper.get(NEWS_SITES['geektime'], headers=HEADERS).text, 'html.parser')
-        articles = soup.select('div.card_content h3.card__title')[:3]  # שליפת הכותרות מה-card_content
+        articles = soup.select('h3.card__title')[:3]  # שליפת הכותרות ישירות מ-h3.card__title
         results = []
         for item in articles:
             parent_a = item.find_parent('a')  # מציאת ה-<a> שמכיל את הקישור
