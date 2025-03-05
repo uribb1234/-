@@ -2,12 +2,12 @@ import os
 import cloudscraper
 import requests
 from bs4 import BeautifulSoup
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup  # ייבוא מ-telegram
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes  # ייבוא מ-telegram.ext
 from flask import Flask
 import threading
 import logging
-from requests_html import HTMLSession  # נוסף עבור ערוץ 14
+from requests_html import HTMLSession
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
