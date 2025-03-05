@@ -146,7 +146,7 @@ def scrape_sport5():
             
             results.append({
                 'time': time,
-                'title': title,
+                'title':  title,
                 'link': link
             })
         
@@ -229,22 +229,21 @@ def scrape_geektime():
         soup = BeautifulSoup(response.text, 'html.parser')
         logger.info(f"Geektime HTML length: {len(response.text)} characters")
         
-        # חיפוש כל ה-<a> שמכילים h3 עם class card__title
-        articles = soup.select('a h3.card__title')[:3]
-        logger.info(f"Found {len(articles)} h3.card__title elements inside <a>")
+        articles = soup.select('article.card-cat')[:3]  # שליפת 3 כתבות מה-<article class="card-cat">
+        logger.info(f"Found {len(articles)} article.card-cat elements")
         
         results = []
-        for idx, item in enumerate(articles):
-            parent_a = item.find_parent('a')
-            if parent_a:
-                title = item.get_text(strip=True)
-                link = parent_a['href']
+        for idx, article in enumerate(articles):
+            title = article.get('data-title')  # שימוש ב-data-title לכותרת
+            link_tag = article.select_one('div.card_thumb a')  # חיפוש ה-<a> בתוך div.card_thumb
+            if title and link_tag:
+                link = link_tag['href']
                 if not link.startswith('http'):
                     link = f"https://www.geektime.co.il{link}"
                 results.append({'title': title, 'link': link})
                 logger.info(f"Article {idx+1}: title='{title}', link='{link}'")
             else:
-                logger.info(f"Article {idx+1}: No parent <a> found for h3.card__title")
+                logger.info(f"Article {idx+1}: Missing title or link (title='{title}', link_tag={link_tag})")
         
         logger.info(f"סקריפינג Geektime הצליח: {len(results)} כתבות נשלפו")
         return results, None
