@@ -25,7 +25,8 @@ NEWS_SITES = {
     'walla': 'https://news.walla.co.il/',
     'sport5': 'https://m.sport5.co.il/',
     'sport1': 'https://sport1.maariv.co.il/',
-    'one': 'https://m.one.co.il/mobile/'
+    'one': 'https://m.one.co.il/mobile/',
+    'geektime': 'https://www.geektime.co.il/'
 }
 
 HEADERS = {
@@ -220,6 +221,24 @@ def scrape_one():
         logger.error(f"שגיאה בסקריפינג ONE: {e}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
+def scrape_geektime():
+    try:
+        scraper = cloudscraper.create_scraper()
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['geektime'], headers=HEADERS).text, 'html.parser')
+        articles = soup.select('div.post-content h2 a')[:3]  # שליפת 3 הכותרות הראשיות
+        results = []
+        for item in articles:
+            title = item.get_text(strip=True)
+            link = item['href']
+            if not link.startswith('http'):
+                link = f"https://www.geektime.co.il{link}"
+            results.append({'title': title, 'link': link})
+        logger.info(f"סקריפינג Geektime הצליח: {len(results)} כתבות נשלפו")
+        return results, None
+    except Exception as e:
+        logger.error(f"שגיאה בסקריפינג Geektime: {e}")
+        return [], f"שגיאה לא ידועה: {str(e)}"
+
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     chat = await context.bot.get_chat(user_id)
@@ -245,7 +264,10 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += "לא ניתן לטעון כרגע\n"
         message += "\n"
     
-    keyboard = [[InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')]]
+    keyboard = [
+        [InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
@@ -287,7 +309,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if sport1_error:
-            message += f"**פרטי השגיאה:** {sport5_error}\n"
+            message += f"**פרטי השגיאה:** {sport1_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
@@ -297,6 +319,33 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "לא ניתן למצוא מבזקים\n"
         if one_error:
             message += f"**פרטי השגיאה:** {one_error}\n"
+    
+    keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} triggered tech_news, username: {username}")
+    log_interaction(user_id, "tech_news", username)
+    await query.answer()
+    
+    await query.message.reply_text("מחפש חדשות טכנולוגיה...")
+    
+    geektime_news, geektime_error = scrape_geektime()
+    
+    message = "**Geektime**\n"
+    if geektime_news:
+        for idx, article in enumerate(geektime_news[:3], 1):
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += "לא ניתן למצוא מבזקים\n"
+        if geektime_error:
+            message += f"**פרטי השגיאה:** {geektime_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -330,7 +379,10 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += "לא ניתן לטעון כרגע\n"
         message += "\n"
     
-    keyboard = [[InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')]]
+    keyboard = [
+        [InlineKeyboardButton("⚽🏀 קבלת מבזקי ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
+    ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
@@ -352,6 +404,7 @@ if __name__ == "__main__":
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))  # הוספת מטפל לטכנולוגיה
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
     # הרצת Flask בשרשור נפרד
