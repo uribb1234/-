@@ -223,9 +223,26 @@ def scrape_one():
 
 def scrape_geektime():
     try:
+        # כותרות משופרות שמדמות דפדפן מודרני
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        
+        # יצירת scraper עם הכותרות המשופרות
         scraper = cloudscraper.create_scraper()
-        response = scraper.get(NEWS_SITES['geektime'], headers=HEADERS)
+        response = scraper.get(NEWS_SITES['geektime'], headers=headers)
         logger.info(f"Geektime response status: {response.status_code}")
+        
+        # בדיקת תגובה
+        if response.status_code == 403:
+            logger.error("Geektime חסם את הבקשה עם שגיאת 403")
+            return [], "שגיאת 403: הגישה נחסמה על ידי האתר"
+        
         soup = BeautifulSoup(response.text, 'html.parser')
         logger.info(f"Geektime HTML length: {len(response.text)} characters")
         
