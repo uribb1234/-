@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
+import feedparser  # עבור RSS
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -26,7 +27,8 @@ NEWS_SITES = {
     'sport5': 'https://m.sport5.co.il/',
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
-    'ynet_tech': 'https://www.ynet.co.il/digital/technews'  # Ynet חדשות טכנולוגיה
+    'ynet_tech': 'https://www.ynet.co.il/digital/technews',
+    'channel14': 'https://www.now14.co.il/feed/'  # RSS של ערוץ 14
 }
 
 HEADERS = {
@@ -69,8 +71,8 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("שגיאה: הקובץ לא נוצר!")
             return
         with open(filename, 'rb') as file:
+            await update.message.reply_text("הנה הנתונים שלך!")
             await update.message.reply_document(document=file, filename="bot_usage.xlsx")
-        await update.message.reply_text("הנה הנתונים שלך!")
         os.remove(filename)
     except Exception as e:
         logger.error(f"שגיאה בשליחת הקובץ: {e}")
@@ -227,14 +229,13 @@ def scrape_ynet_tech():
         soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet_tech'], headers=HEADERS, timeout=1).text, 'html.parser')
         logger.info(f"Ynet Tech HTML length: {len(soup.text)} characters")
         
-        # שליפת כתבות מה-slotView
-        articles = soup.select('div.slotView')[:3]  # שליפת 3 הכתבות הראשונות
+        articles = soup.select('div.slotView')[:3]
         logger.info(f"Found {len(articles)} articles in Ynet Tech")
         
         results = []
         for idx, article in enumerate(articles):
             title_tag = article.select_one('div.slotTitle a')
-            link_tag = title_tag  # הקישור נמצא באותו תגית של הכותרת
+            link_tag = title_tag
             time_tag = article.select_one('span.dateView')
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
@@ -259,6 +260,35 @@ def scrape_ynet_tech():
         return results, None
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
+        return [], f"שגיאה לא ידועה: {str(e)}"
+
+def scrape_channel14():
+    try:
+        feed = feedparser.parse(NEWS_SITES['channel14'])
+        logger.info(f"Channel 14 RSS feed status: {feed.get('status', 'לא זמין')}")
+        logger.info(f"Channel 14 RSS feed entries: {len(feed.entries)}")
+        
+        if not feed.entries:
+            logger.warning("לא נמצאו כתבות ב-RSS של ערוץ 14")
+            return [], "לא נמצאו כתבות ב-RSS"
+        
+        results = []
+        for entry in feed.entries[:3]:
+            title = entry.get('title', 'ללא כותרת')
+            link = entry.get('link', '#')
+            time = entry.get('published', 'ללא שעה')
+            if time:
+                try:
+                    time = time.split('+')[0].strip()
+                except:
+                    time = 'ללא שעה'
+            results.append({'title': title, 'link': link, 'time': time})
+            logger.info(f"Article: title='{title}', link='{link}', time='{time}'")
+        
+        logger.info(f"סקריפינג ערוץ 14 (RSS) הצליח: {len(results)} כתבות נשלפו")
+        return results, None
+    except Exception as e:
+        logger.error(f"שגיאה בסקריפינג ערוץ 14 (RSS): {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,7 +318,8 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
-        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
+        [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -377,6 +408,40 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
+async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.info(f"User {user_id} triggered tv_news, username: {username}")
+    log_interaction(user_id, "tv_news", username)
+    await query.answer()
+    
+    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
+    
+    channel14_news, channel14_error = scrape_channel14()
+    
+    message = "**חדשות מערוצי טלוויזיה**\n\n"
+    message += "**כאן 11**: (הערה: הפונקציה עדיין בבנייה)\n"
+    message += "**קשת 12**: (הערה: הפונקציה עדיין בבנייה)\n"
+    message += "**רשת 13**: (הערה: הפונקציה עדיין בבנייה)\n"
+    message += "**עכשיו 14**:\n"
+    if channel14_news:
+        for idx, article in enumerate(channel14_news[:3], 1):
+            if 'time' in article:
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += "לא ניתן למצוא מבזקים\n"
+        if channel14_error:
+            message += f"**פרטי השגיאה:** {channel14_error}\n"
+    
+    keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
 async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
@@ -406,7 +471,8 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [
         [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
-        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
+        [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -430,6 +496,7 @@ if __name__ == "__main__":
     bot_app.add_handler(CommandHandler("download", download))
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
     bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))
+    bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
     # הרצת Flask בשרשור נפרד
