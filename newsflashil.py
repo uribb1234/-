@@ -28,7 +28,7 @@ NEWS_SITES = {
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
-    'channel14': 'https://www.now14.co.il/'  # עמוד ראשי במקום RSS
+    'channel14': 'https://www.now14.co.il/'
 }
 
 HEADERS = {
@@ -267,10 +267,9 @@ def scrape_ynet_tech():
 
 def scrape_channel14():
     try:
-        # שימוש ב-HTMLSession לטעינת העמוד עם תמיכה ב-JavaScript
         session = HTMLSession()
         response = session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=1)
-        response.html.render(timeout=5, sleep=0.5)  # עיבוד JavaScript קצר
+        response.html.render(timeout=5, sleep=0.5)
         
         logger.info(f"Channel 14 response status: {response.status_code}")
         logger.info(f"Channel 14 HTML length: {len(response.html.html)} characters")
@@ -281,8 +280,7 @@ def scrape_channel14():
         
         soup = BeautifulSoup(response.html.html, 'html.parser')
         
-        # שליפת כתבות מהעמוד הראשי (בהתבסס על מבנה אפשרי)
-        articles = soup.select('article.post')[:3]  # התאמה לדוגמה נפוצה, ייתכן שצריך להתאים
+        articles = soup.select('article.post')[:3]
         logger.info(f"Found {len(articles)} articles in Channel 14")
         
         results = []
