@@ -135,7 +135,6 @@ def scrape_sport5():
         
         articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
- ___________
         results = []
         for item in articles[:3]:
             link_tag = item.find('a', class_='item')
@@ -373,8 +372,8 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
-        if sport5_error:
-            message += f"**פרטי השגיאה:** {sport5_error}\n"
+        if sport1_error:
+            message += f"**פרטי השגיאה:** {sport1_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
