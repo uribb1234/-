@@ -1,5 +1,5 @@
 import os
-import cloudscraper
+from curl_cffi import requests as curl_requests  # שימוש ב-curl_cffi במקום cloudscraper
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -30,14 +30,13 @@ NEWS_SITES = {
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579'
 }
 
-# כותרות בסיסיות עבור ערוץ 7 ואתרים רגילים
 BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
     'Accept': 'application/json',
     'Referer': 'https://www.google.com/'
 }
 
-# כותרות מותאמות לדפדפן שלך עבור כאן 11 עם עוגיית cf_clearance
+# כותרות לדימוי Chrome 133 עבור curl_cffi
 API_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -45,14 +44,10 @@ API_HEADERS = {
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'max-age=0',
     'Referer': 'https://www.kan.org.il/',
-    'Connection': 'keep-alive',
-    'Cookie': 'cf_clearance=z2ZOZFGpkXPfVCtx9xW8Ma8j_rejqSMA8JuFmd7ak_M-1741208476-1.2.1.1-k5gdPIWfIl2W9XwwFXt.HSCQspuT7MRDZkpmE5UENRLT2FTs_Swtn4zrGULc3yPYKxfjX5Im4YVvEaWr1zxC8_KhVGVRbd_KTuTpnZnKbktM6DocPBqkDyJxuNJfaCzdyHkhvdM6r5MZECO.RQYXYwGgw.lD8NpLLvyrcNdvD4BJ88yYu7X0Lw8SczQ.H1.QP7gqnN5zwC93WU1UUC0a9VXu_TF98Quwoj86cbzC7UMySAlp0lQwENXPgzDiblPXWtIWccb9PrnJjrZIEW8D2nprzCpSTGi7DKzNb78b0kyavNypB7ODoHRs0Hq9HDbxOej3UBXvILst457P7Whi94hR24XogSaBG.1DVxEmdJJ_LSeBfFgbj8iMaTgYn0CyQchSWZ83OUyD4qTUwC9lx7JeI1hSGW7RNvN9NtF0UC8'
+    'Connection': 'keep-alive'
 }
 
-# יצירת אפליקציית Flask דמה
 app = Flask(__name__)
-
-# יצירת אפליקציית Telegram
 bot_app = Application.builder().token(TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -94,8 +89,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def scrape_ynet():
     try:
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=BASE_HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(requests.get(NEWS_SITES['ynet'], headers=BASE_HEADERS).text, 'html.parser')
         return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
     except Exception as e:
         logger.error(f"שגיאה ב-Ynet: {e}")
@@ -121,8 +115,7 @@ def scrape_arutz7():
 
 def scrape_walla():
     try:
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['walla'], headers=BASE_HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(requests.get(NEWS_SITES['walla'], headers=BASE_HEADERS).text, 'html.parser')
         items = soup.select_one('div.top-section-newsflash.no-mobile').select('a') if soup.select_one('div.top-section-newsflash.no-mobile') else []
         results = []
         for item in items:
@@ -143,8 +136,7 @@ def scrape_walla():
 def scrape_sport5():
     try:
         url = 'https://m.sport5.co.il/'
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(requests.get(url, headers=BASE_HEADERS).text, 'html.parser')
         
         articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
@@ -176,8 +168,7 @@ def scrape_sport5():
 def scrape_sport1():
     try:
         url = 'https://sport1.maariv.co.il/'
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(requests.get(url, headers=BASE_HEADERS).text, 'html.parser')
         
         articles = soup.select('div.hot-news-container article.article-card')
         
@@ -209,8 +200,7 @@ def scrape_sport1():
 def scrape_one():
     try:
         url = 'https://m.one.co.il/mobile/'
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(requests.get(url, headers=BASE_HEADERS).text, 'html.parser')
         
         articles = soup.select('a.mobile-hp-article-plain')
         
@@ -240,8 +230,7 @@ def scrape_one():
 
 def scrape_ynet_tech():
     try:
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=1).text, 'html.parser')
+        soup = BeautifulSoup(requests.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=1).text, 'html.parser')
         logger.info(f"Ynet Tech HTML length: {len(soup.text)} characters")
         
         articles = soup.select('div.slotView')[:3]
@@ -279,9 +268,8 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        scraper = cloudscraper.create_scraper()
-        logger.info(f"Sending User-Agent to Kan 11 API: {API_HEADERS['User-Agent']}")
-        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1)
+        # שימוש ב-curl_cffi עם דימוי ל-Chrome 133
+        response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome133")
         
         logger.info(f"Kan 11 API response status: {response.status_code}")
         logger.info(f"Kan 11 API response headers: {response.headers}")
@@ -503,7 +491,6 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
-# שרת Flask דמה שמקשיב לפורט
 @app.route('/')
 def home():
     return "Bot is alive!"
@@ -515,7 +502,6 @@ def run_flask():
 if __name__ == "__main__":
     logger.info("מתחיל את הבוט עם Polling ושרת דמה...")
     
-    # הגדרת המטפלים
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
@@ -524,9 +510,7 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הרצת Flask בשרשור נפרד
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # איתחול והרצת Polling
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
