@@ -30,7 +30,15 @@ NEWS_SITES = {
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579'  # API של כאן 11
 }
 
-HEADERS = {
+# כותרות בסיסיות עבור אתרים רגילים וערוץ 7
+BASE_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Accept': 'application/json',
+    'Referer': 'https://www.inn.co.il/'
+}
+
+# כותרות משופרות עבור API של כאן 11
+API_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -88,7 +96,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def scrape_ynet():
     try:
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=BASE_HEADERS).text, 'html.parser')
         return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
     except Exception as e:
         logger.error(f"שגיאה ב-Ynet: {e}")
@@ -96,7 +104,9 @@ def scrape_ynet():
 
 def scrape_arutz7():
     try:
-        response = requests.get(NEWS_SITES['arutz7'], headers=HEADERS)
+        response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS)
+        logger.info(f"Arutz 7 API response status: {response.status_code}")
+        logger.info(f"Arutz 7 API response content: {response.text[:500]}")  # לוג לתגובה
         response.raise_for_status()
         data = response.json()
         items = data.get('Items', []) if 'Items' in data else data
@@ -114,7 +124,7 @@ def scrape_arutz7():
 def scrape_walla():
     try:
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['walla'], headers=HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['walla'], headers=BASE_HEADERS).text, 'html.parser')
         items = soup.select_one('div.top-section-newsflash.no-mobile').select('a') if soup.select_one('div.top-section-newsflash.no-mobile') else []
         results = []
         for item in items:
@@ -136,7 +146,7 @@ def scrape_sport5():
     try:
         url = 'https://m.sport5.co.il/'
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
         
         articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
@@ -169,7 +179,7 @@ def scrape_sport1():
     try:
         url = 'https://sport1.maariv.co.il/'
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
         
         articles = soup.select('div.hot-news-container article.article-card')
         
@@ -202,7 +212,7 @@ def scrape_one():
     try:
         url = 'https://m.one.co.il/mobile/'
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=HEADERS).text, 'html.parser')
+        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
         
         articles = soup.select('a.mobile-hp-article-plain')
         
@@ -233,7 +243,7 @@ def scrape_one():
 def scrape_ynet_tech():
     try:
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet_tech'], headers=HEADERS, timeout=1).text, 'html.parser')
+        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=1).text, 'html.parser')
         logger.info(f"Ynet Tech HTML length: {len(soup.text)} characters")
         
         articles = soup.select('div.slotView')[:3]
@@ -272,8 +282,8 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         scraper = cloudscraper.create_scraper()
-        logger.info(f"Sending User-Agent to Kan 11 API: {HEADERS['User-Agent']}")
-        response = scraper.get(NEWS_SITES['kan11'], headers=HEADERS, timeout=1)
+        logger.info(f"Sending User-Agent to Kan 11 API: {API_HEADERS['User-Agent']}")
+        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1)
         
         logger.info(f"Kan 11 API response status: {response.status_code}")
         logger.info(f"Kan 11 API response headers: {response.headers}")
