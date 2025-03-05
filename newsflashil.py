@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-from requests_html import HTMLSession
+from requests_html import AsyncHTMLSession  # שינוי ל-AsyncHTMLSession
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -265,11 +265,11 @@ def scrape_ynet_tech():
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
-def scrape_channel14():
+async def scrape_channel14():
     try:
-        session = HTMLSession()
-        response = session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=1)
-        response.html.render(timeout=5, sleep=0.5)
+        session = AsyncHTMLSession()
+        response = await session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=1)
+        await response.html.arender(timeout=5, sleep=0.5)  # שימוש ב-arender עבור אסינכרוניות
         
         logger.info(f"Channel 14 response status: {response.status_code}")
         logger.info(f"Channel 14 HTML length: {len(response.html.html)} characters")
@@ -440,7 +440,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
-    channel14_news, channel14_error = scrape_channel14()
+    channel14_news, channel14_error = await scrape_channel14()  # קריאה אסינכרונית
     
     message = "**חדשות מערוצי טלוויזיה**\n\n"
     message += "**כאן 11**: (הערה: הפונקציה עדיין בבנייה)\n"
