@@ -229,8 +229,9 @@ def scrape_geektime():
         soup = BeautifulSoup(response.text, 'html.parser')
         logger.info(f"Geektime HTML length: {len(response.text)} characters")
         
-        articles = soup.select('h3.card__title')[:3]
-        logger.info(f"Found {len(articles)} h3.card__title elements")
+        # חיפוש כל ה-<a> שמכילים h3 עם class card__title
+        articles = soup.select('a h3.card__title')[:3]
+        logger.info(f"Found {len(articles)} h3.card__title elements inside <a>")
         
         results = []
         for idx, item in enumerate(articles):
@@ -277,7 +278,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     
     keyboard = [
-        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],  # שינוי כותרת
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
         [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -392,7 +393,7 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += "\n"
     
     keyboard = [
-        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],  # שינוי כותרת
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
         [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
