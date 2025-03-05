@@ -3,7 +3,4 @@ requests
 beautifulsoup4
 python-telegram-bot>=20.0
 flask
-feedparser
-requests-html
-lxml_html_clean
 pandas
