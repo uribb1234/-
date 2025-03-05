@@ -73,7 +73,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("הנה הנתונים שלך!")
         os.remove(filename)
     except Exception as e:
-        logger.error(f"שגיאה בשליחת הקובץ: {e}")
+        logger,error(f"שגיאה בשליחת הקובץ: {e}")
         await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
 
 def scrape_ynet():
@@ -225,14 +225,16 @@ def scrape_geektime():
     try:
         scraper = cloudscraper.create_scraper()
         soup = BeautifulSoup(scraper.get(NEWS_SITES['geektime'], headers=HEADERS).text, 'html.parser')
-        articles = soup.select('div.post-content h2 a')[:3]  # שליפת 3 הכותרות הראשיות
+        articles = soup.select('div.card_content h3.card__title')[:3]  # שליפת הכותרות מה-card_content
         results = []
         for item in articles:
-            title = item.get_text(strip=True)
-            link = item['href']
-            if not link.startswith('http'):
-                link = f"https://www.geektime.co.il{link}"
-            results.append({'title': title, 'link': link})
+            parent_a = item.find_parent('a')  # מציאת ה-<a> שמכיל את הקישור
+            if parent_a:
+                title = item.get_text(strip=True)
+                link = parent_a['href']
+                if not link.startswith('http'):
+                    link = f"https://www.geektime.co.il{link}"
+                results.append({'title': title, 'link': link})
         logger.info(f"סקריפינג Geektime הצליח: {len(results)} כתבות נשלפו")
         return results, None
     except Exception as e:
@@ -404,7 +406,7 @@ if __name__ == "__main__":
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
-    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))  # הוספת מטפל לטכנולוגיה
+    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
     # הרצת Flask בשרשור נפרד
