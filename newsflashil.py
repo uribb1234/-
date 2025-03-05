@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-import feedparser  # נוסף עבור RSS
+import feedparser  # עבור RSS
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -27,7 +27,7 @@ NEWS_SITES = {
     'sport5': 'https://m.sport5.co.il/',
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
-    'geektime': 'https://www.geektime.co.il/feed/'  # שונה ל-RSS Feed
+    'geektime': 'https://www.geektime.co.il/feed/'  # RSS Feed
 }
 
 HEADERS = {
@@ -226,18 +226,27 @@ def scrape_geektime():
     try:
         # שליפת ה-RSS Feed של Geektime
         feed = feedparser.parse(NEWS_SITES['geektime'])
+        logger.info(f"Geektime RSS feed status: {feed.get('status', 'לא זמין')}")
         logger.info(f"Geektime RSS feed entries: {len(feed.entries)}")
+        
+        if not feed.entries:
+            logger.warning("לא נמצאו כתבות ב-RSS של Geektime")
+            return [], "לא נמצאו כתבות ב-RSS"
         
         results = []
         for entry in feed.entries[:3]:  # שליפת 3 הכתבות הראשונות
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
-            results.append({'title': title, 'link': link})
-            logger.info(f"Article: title='{title}', link='{link}'")
-        
-        if not results:
-            logger.warning("לא נמצאו כתבות ב-RSS של Geektime")
-            return [], "לא נמצאו כתבות ב-RSS"
+            # הוספת זמן אם קיים (pubDate)
+            time = entry.get('published', 'ללא שעה')
+            if time:
+                try:
+                    # נסה לפצל את הזמן לפורמט קריא
+                    time = time.split('+')[0].strip()  # מסיר את אזור הזמן
+                except:
+                    time = 'ללא שעה'
+            results.append({'title': title, 'link': link, 'time': time})
+            logger.info(f"Article: title='{title}', link='{link}', time='{time}'")
         
         logger.info(f"סקריפינג Geektime (RSS) הצליח: {len(results)} כתבות נשלפו")
         return results, None
@@ -347,7 +356,10 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "**Geektime**\n"
     if geektime_news:
         for idx, article in enumerate(geektime_news[:3], 1):
-            message += f"{idx}. [{article['title']}]({article['link']})\n"
+            if 'time' in article:
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if geektime_error:
