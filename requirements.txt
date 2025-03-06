@@ -8,3 +8,4 @@ curl-cffi
 feedparser
 playwright
 brotli
+openpyxl
