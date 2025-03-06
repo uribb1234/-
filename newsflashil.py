@@ -1,5 +1,5 @@
 import os
-import cloudscraper
+import cloudscraper  # הוספנו חזרה
 from curl_cffi import requests as curl_requests
 import requests
 from bs4 import BeautifulSoup
@@ -375,7 +375,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = scrape_channel14()  # הוספתי את הקריאה לערוץ 14
+    channel14_news, channel14_error = scrape_channel14()  # הוספתי את ערוץ 14
     
     message = "**חדשות מערוצי טלוויזיה**\n\n"
     message += "**כאן 11**:\n"
