@@ -248,11 +248,10 @@ def scrape_kan11():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
-
 def scrape_channel14():
     try:
         logger.debug("Starting Channel 14 request with curl_cffi")
-        response = curl_requests.get(NEWS_SITES['channel14'], headers=API_HEADERS, timeout=1, impersonate="chrome110")
+        response = curl_requests.get(NEWS_SITES['channel14'], headers=API_HEADERS, timeout=1, impersonate="chrome124")
         
         logger.info(f"Channel 14 response status: {response.status_code}")
         logger.info(f"Channel 14 response headers: {response.headers}")
@@ -291,7 +290,6 @@ def scrape_channel14():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return []
-
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
