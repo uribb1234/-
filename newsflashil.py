@@ -13,6 +13,7 @@ import time
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
+import brotli  # להתמודד עם דחיסת Brotli
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -194,7 +195,7 @@ def scrape_ynet_tech():
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'  # שינוי שם משתנה כדי להימנע מקונפליקט
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             
             if not link.startswith('http'):
                 link = f"https://www.ynet.co.il{link}"
@@ -219,33 +220,46 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 request with cloudscraper")
-        # עיכוב אקראי בתוך ה-try
-        time.sleep(random.uniform(1, 3))
+        time.sleep(random.uniform(2, 5))  # עיכוב מוגבר
         
+        # יצירת סשן עם עוגיות
         scraper = cloudscraper.create_scraper(
             browser={
                 'browser': 'chrome',
                 'platform': 'windows',
                 'mobile': False
             },
-            delay=10
+            delay=15  # עיכוב מוגבר
         )
         
-        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=10)
+        # בקשה ראשונית לדף הבית כדי לקבל עוגיות
+        scraper.get('https://www.kan.org.il/', headers=API_HEADERS)
+        time.sleep(random.uniform(1, 3))
+        
+        # הבקשה הראשית עם עוגיות
+        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=15)
         
         logger.info(f"Kan 11 response status: {response.status_code}")
         logger.debug(f"Kan 11 response headers: {response.headers}")
-        logger.debug(f"Kan 11 response content (full): {response.text}")
+        
+        # פתיחת דחיסת Brotli אם קיימת
+        content = response.content
+        if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
+            content = brotli.decompress(response.content)
+            logger.debug(f"Kan 11 decompressed content (full): {content.decode('utf-8', errors='ignore')}")
+        else:
+            logger.debug(f"Kan 11 response content (full): {response.text}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
-            if "cloudflare" in response.text.lower():
+            decompressed_text = content.decode('utf-8', errors='ignore') if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text
+            if "cloudflare" in decompressed_text.lower():
                 logger.error("Cloudflare זיהה את הבקשה כבוט")
-            elif "forbidden" in response.text.lower():
-                logger.error("חסימה פנימית של השרת - אולי IP או חתימת בקשה")
+            elif "forbidden" in decompressed_text.lower():
+                logger.error("חסימה פנימית של השרת")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        soup = BeautifulSoup(response.text, 'html.parser')
+        soup = BeautifulSoup(content if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text, 'html.parser')
         items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
@@ -258,7 +272,7 @@ def scrape_kan11():
             title_tag = item.select_one('div.d-flex.flex-grow-1 span')
             link_tag = item.select_one('a.card-link')
             
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'  # שינוי שם משתנה
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
             
@@ -278,8 +292,7 @@ def scrape_kan11():
 def scrape_channel14():
     try:
         logger.debug("Starting Channel 14 RSS fetch with cloudscraper")
-        # עיכוב אקראי בתוך ה-try
-        time.sleep(random.uniform(1, 3))
+        time.sleep(random.uniform(2, 5))  # עיכוב מוגבר
         
         scraper = cloudscraper.create_scraper(
             browser={
@@ -287,22 +300,34 @@ def scrape_channel14():
                 'platform': 'windows',
                 'mobile': False
             },
-            delay=10
+            delay=15  # עיכוב מוגבר
         )
         
-        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=10)
+        # בקשה ראשונית לדף הבית
+        scraper.get('https://www.now14.co.il/', headers=BASE_HEADERS)
+        time.sleep(random.uniform(1, 3))
+        
+        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=15)
         
         logger.debug(f"Channel 14 response status: {response.status_code}")
         logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
         
+        # פתיחת דחיסת Brotli
+        content = response.content
+        if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
+            content = brotli.decompress(response.content)
+            logger.debug(f"Channel 14 decompressed content (full): {content.decode('utf-8', errors='ignore')}")
+        else:
+            logger.debug(f"Channel 14 response content (full): {response.text}")
+        
         if response.status_code != 200:
             logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
-            logger.debug(f"Channel 14 full response: {response.text}")
-            if "cloudflare" in response.text.lower():
+            decompressed_text = content.decode('utf-8', errors='ignore') if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text
+            if "cloudflare" in decompressed_text.lower():
                 logger.error("Cloudflare זיהה את הבקשה כבוט")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        feed = feedparser.parse(response.text)
+        feed = feedparser.parse(content if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text)
         
         if feed.bozo:
             logger.warning(f"Failed to parse RSS feed: {feed.bozo_exception}")
@@ -312,7 +337,7 @@ def scrape_channel14():
         
         results = []
         for entry in feed.entries[:3]:
-            article_time = entry.get('published', 'ללא שעה')  # שינוי שם משתנה
+            article_time = entry.get('published', 'ללא שעה')
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
             
