@@ -312,21 +312,27 @@ def scrape_kan11():
         logger.debug("Starting Kan 11 API request with curl_cffi")
         response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome110")
         
-        # הדפס את המידע ברמת INFO כדי להבטיח שהוא מופיע
+        # הדפס את כל המידע תמיד
         logger.info(f"Kan 11 API response status: {response.status_code}")
         logger.info(f"Kan 11 API response headers: {response.headers}")
-        logger.info(f"Kan 11 API response content: {response.text[:500]}")
+        logger.info(f"Kan 11 API response content (first 500 chars): {response.text[:500]}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
-            return [], f"שגיאת {response.status_code}: הגישה נחסמה"
+            # נסה לפרש כ-HTML אם זה לא 200
+            soup = BeautifulSoup(response.text, 'html.parser')
+            logger.debug(f"Kan 11 response parsed as HTML: {soup.prettify()[:500]}")
+            return [], f"שגיאת {response.status_code}: הגישה נחסמה - קיבלנו HTML במקום JSON"
         
-        # נסה לפרק את ה-JSON
+        # נסה לפרק כ-JSON
         try:
             data = response.json()
         except ValueError as json_error:
             logger.error(f"שגיאה בפריקת JSON: {str(json_error)} - Response content: {response.text[:500]}")
-            return [], f"שגיאה בפריקת JSON: {str(json_error)}"
+            # נסה לפרש כ-HTML במקרה של כשלון JSON
+            soup = BeautifulSoup(response.text, 'html.parser')
+            logger.debug(f"Kan 11 response parsed as HTML: {soup.prettify()[:500]}")
+            return [], f"שגיאה בפריקת JSON: {str(json_error)} - קיבלנו HTML במקום JSON"
         
         items = data.get('Items', [])
         logger.debug(f"Kan 11 API returned {len(items)} items")
