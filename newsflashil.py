@@ -1,6 +1,4 @@
 import os
-import cloudscraper
-from curl_cffi import requests as curl_requests
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -13,9 +11,17 @@ import time
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
-import brotli
+from playwright.sync_api import sync_playwright
 
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+# הגדרת לוגינג עם כתיבה לקובץ וקונסולה
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -36,24 +42,6 @@ BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': 'application/json',
     'Referer': 'https://www.google.com/'
-}
-
-API_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Cache-Control': 'max-age=0',
-    'Referer': 'https://www.kan.org.il/',
-    'Connection': 'keep-alive',
-    'Sec-CH-UA': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
-    'Sec-CH-UA-Mobile': '?0',
-    'Sec-CH-UA-Platform': '"Windows"',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'same-origin',
-    'Sec-Fetch-User': '?1',
-    'Upgrade-Insecure-Requests': '1'
 }
 
 app = Flask(__name__)
@@ -132,8 +120,8 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def scrape_ynet():
     try:
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=BASE_HEADERS).text, 'html.parser')
+        response = requests.get(NEWS_SITES['ynet'], headers=BASE_HEADERS)
+        soup = BeautifulSoup(response.text, 'html.parser')
         return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
     except Exception as e:
         logger.error(f"שגיאה ב-Ynet: {e}")
@@ -159,8 +147,8 @@ def scrape_arutz7():
 
 def scrape_walla():
     try:
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['walla'], headers=BASE_HEADERS).text, 'html.parser')
+        response = requests.get(NEWS_SITES['walla'], headers=BASE_HEADERS)
+        soup = BeautifulSoup(response.text, 'html.parser')
         items = soup.select_one('div.top-section-newsflash.no-mobile').select('a') if soup.select_one('div.top-section-newsflash.no-mobile') else []
         results = []
         for item in items:
@@ -180,38 +168,20 @@ def scrape_walla():
 
 def scrape_ynet_tech():
     try:
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=1).text, 'html.parser')
-        logger.debug(f"Ynet Tech HTML length: {len(soup.text)} characters")
-        
+        response = requests.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
         articles = soup.select('div.slotView')[:3]
-        logger.debug(f"Found {len(articles)} articles in Ynet Tech")
-        
         results = []
         for idx, article in enumerate(articles):
             title_tag = article.select_one('div.slotTitle a')
             link_tag = title_tag
             time_tag = article.select_one('span.dateView')
-            
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
             article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            
             if not link.startswith('http'):
                 link = f"https://www.ynet.co.il{link}"
-            
-            results.append({
-                'time': article_time,
-                'title': title,
-                'link': link
-            })
-            logger.debug(f"Article {idx+1}: time='{article_time}', title='{title}', link='{link}'")
-        
-        if not results:
-            logger.warning("לא נמצאו כתבות ב-Ynet Tech")
-            return [], "לא נמצאו כתבות"
-        
-        logger.info(f"סקריפינג Ynet Tech הצליח: {len(results)} כתבות נשלפו")
+            results.append({'time': article_time, 'title': title, 'link': link})
         return results, None
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
@@ -219,57 +189,16 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 request with advanced cloudscraper")
-        time.sleep(random.uniform(3, 6))  # עיכוב מוגבר לחיקוי התנהגות אנושית
+        logger.debug("Starting Kan 11 scrape with Playwright")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
+            time.sleep(5)  # ממתין לפתרון אתגר Cloudflare
+            content = page.content()
+            browser.close()
         
-        # שימוש ב-cloudscraper עם תמיכה משופרת ב-JS
-        scraper = cloudscraper.create_scraper(
-            browser={
-                'browser': 'chrome',
-                'platform': 'windows',
-                'mobile': False
-            },
-            delay=20,  # עיכוב גדול יותר
-            interpreter='nodejs',  # תמיכה בפתרון אתגרי JS
-            allow_brotli=True  # תמיכה מובנית ב-Brotli
-        )
-        
-        # בקשה ראשונית לדף הבית לאיסוף עוגיות
-        home_response = scraper.get('https://www.kan.org.il/', headers=API_HEADERS)
-        logger.debug(f"Kan 11 home page status: {home_response.status_code}")
-        time.sleep(random.uniform(2, 4))
-        
-        # הבקשה הראשית עם עוגיות שנאספו
-        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=20)
-        
-        logger.info(f"Kan 11 response status: {response.status_code}")
-        logger.debug(f"Kan 11 response headers: {response.headers}")
-        
-        # ניהול תוכן דחוס
-        content = response.content
-        decompressed_text = None
-        if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
-            try:
-                content = brotli.decompress(response.content)
-                decompressed_text = content.decode('utf-8', errors='ignore')
-                logger.debug(f"Kan 11 decompressed content (full): {decompressed_text}")
-            except brotli.error as e:
-                logger.error(f"Brotli decompression failed: {str(e)}")
-                decompressed_text = response.text
-                logger.debug(f"Kan 11 raw content (fallback): {decompressed_text}")
-        else:
-            decompressed_text = response.text
-            logger.debug(f"Kan 11 response content (full): {decompressed_text}")
-        
-        if response.status_code != 200:
-            logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
-            if decompressed_text and "cloudflare" in decompressed_text.lower():
-                logger.error("Cloudflare זיהה את הבקשה כבוט")
-            elif decompressed_text and "forbidden" in decompressed_text.lower():
-                logger.error("חסימה פנימית של השרת")
-            return [], f"שגיאת {response.status_code}: הגישה נחסמה"
-        
-        soup = BeautifulSoup(content if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text, 'html.parser')
+        soup = BeautifulSoup(content, 'html.parser')
         items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
@@ -281,19 +210,13 @@ def scrape_kan11():
             time_tag = item.select_one('div.time')
             title_tag = item.select_one('div.d-flex.flex-grow-1 span')
             link_tag = item.select_one('a.card-link')
-            
             article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
-            
-            results.append({
-                'time': article_time,
-                'title': title,
-                'link': link
-            })
-            logger.debug(f"Article: time='{article_time}', title='{title}', link='{link}'")
+            results.append({'time': article_time, 'title': title, 'link': link})
+            logger.debug(f"Kan 11 article: time='{article_time}', title='{title}', link='{link}'")
         
-        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים נשלפו מה-HTML")
+        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
         return results, None
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
@@ -301,77 +224,32 @@ def scrape_kan11():
 
 def scrape_channel14():
     try:
-        logger.debug("Starting Channel 14 RSS fetch with advanced cloudscraper")
-        time.sleep(random.uniform(3, 6))  # עיכוב מוגבר
+        logger.debug("Starting Channel 14 scrape with Playwright")
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(NEWS_SITES['channel14'], wait_until="domcontentloaded", timeout=60000)
+            time.sleep(5)  # ממתין לפתרון אתגר Cloudflare
+            content = page.content()
+            browser.close()
         
-        scraper = cloudscraper.create_scraper(
-            browser={
-                'browser': 'chrome',
-                'platform': 'windows',
-                'mobile': False
-            },
-            delay=20,
-            interpreter='nodejs',  # תמיכה בפתרון אתגרי JS
-            allow_brotli=True
-        )
-        
-        # בקשה ראשונית לדף הבית
-        home_response = scraper.get('https://www.now14.co.il/', headers=BASE_HEADERS)
-        logger.debug(f"Channel 14 home page status: {home_response.status_code}")
-        time.sleep(random.uniform(2, 4))
-        
-        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=20)
-        
-        logger.debug(f"Channel 14 response status: {response.status_code}")
-        logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
-        
-        # ניהול תוכן דחוס
-        content = response.content
-        decompressed_text = None
-        if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
-            try:
-                content = brotli.decompress(response.content)
-                decompressed_text = content.decode('utf-8', errors='ignore')
-                logger.debug(f"Channel 14 decompressed content (full): {decompressed_text}")
-            except brotli.error as e:
-                logger.error(f"Brotli decompression failed: {str(e)}")
-                decompressed_text = response.text
-                logger.debug(f"Channel 14 raw content (fallback): {decompressed_text}")
-        else:
-            decompressed_text = response.text
-            logger.debug(f"Channel 14 response content (full): {decompressed_text}")
-        
-        if response.status_code != 200:
-            logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
-            if decompressed_text and "cloudflare" in decompressed_text.lower():
-                logger.error("Cloudflare זיהה את הבקשה כבוט")
-            return [], f"שגיאת {response.status_code}: הגישה נחסמה"
-        
-        feed = feedparser.parse(content if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text)
-        
+        feed = feedparser.parse(content)
         if feed.bozo:
-            logger.warning(f"Failed to parse RSS feed: {feed.bozo_exception}")
+            logger.warning(f"Failed to parse Channel 14 RSS: {feed.bozo_exception}")
             return [], f"שגיאה בעיבוד ה-RSS: {feed.bozo_exception}"
-        
-        logger.info(f"Channel 14 RSS feed fetched, found {len(feed.entries)} entries")
         
         results = []
         for entry in feed.entries[:3]:
             article_time = entry.get('published', 'ללא שעה')
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
-            
-            results.append({
-                'time': article_time,
-                'title': title,
-                'link': link
-            })
+            results.append({'time': article_time, 'title': title, 'link': link})
             logger.debug(f"Channel 14 article: time='{article_time}', title='{title}', link='{link}'")
         
-        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים נשלפו מה-RSS")
+        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ערוץ 14 מה-RSS: {str(e)}")
+        logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,7 +260,6 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered sports_news, username: {username}")
     log_interaction(user_id, "sports_news", username)
     await query.answer()
-    
     await query.message.reply_text("מחפש מבזקי ספורט...")
     
     sport5_news, sport5_error = scrape_sport5()
@@ -392,39 +269,26 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "**ספורט 5**\n"
     if sport5_news:
         for idx, article in enumerate(sport5_news[:3], 1):
-            if 'time' in article:
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. [{article['title']}]({article['link']})\n"
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
-        message += "לא ניתן למצוא מבזקים\n"
-        if sport5_error:
-            message += f"**פרטי השגיאה:** {sport5_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport5_error}\n"
     
     message += "\n**ספורט 1**\n"
     if sport1_news:
         for idx, article in enumerate(sport1_news[:3], 1):
-            if 'time' in article:
-                message += f"{idx}. {article['time']} - [{article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. [{article['title']}]({article['link']})\n"
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
-        message += "לא ניתן למצוא מבזקים\n"
-        if sport1_error:
-            message += f"**פרטי השגיאה:** {sport1_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport1_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
         for idx, article in enumerate(one_news[:3], 1):
             message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
-        message += "לא ניתן למצוא מבזקים\n"
-        if one_error:
-            message += f"**פרטי השגיאה:** {one_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {one_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -435,26 +299,18 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tech_news, username: {username}")
     log_interaction(user_id, "tech_news", username)
     await query.answer()
-    
     await query.message.reply_text("מחפש חדשות טכנולוגיה...")
     
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
-    
     message = "**Ynet Tech**\n"
     if ynet_tech_news:
         for idx, article in enumerate(ynet_tech_news[:3], 1):
-            if 'time' in article:
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. [{article['title']}]({article['link']})\n"
+            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
     else:
-        message += "לא ניתן למצוא מבזקים\n"
-        if ynet_tech_error:
-            message += f"**פרטי השגיאה:** {ynet_tech_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {ynet_tech_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -465,43 +321,30 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
     channel14_news, channel14_error = scrape_channel14()
     
-    message = "**חדשות מערוצי טלוויזיה**\n\n"
-    message += "**כאן 11**:\n"
+    message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
         for idx, article in enumerate(kan11_news[:3], 1):
-            if article['link'] != '#':
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. {article['time']} - {article['title']}\n"
+            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
     else:
-        message += "לא ניתן למצוא מבזקים\n"
-        if kan11_error:
-            message += f"**פרטי השגיאה:** {kan11_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {kan11_error}\n"
     
     message += "\n**עכשיו 14**:\n"
     if channel14_news:
         for idx, article in enumerate(channel14_news[:3], 1):
-            if 'time' in article:
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. [{article['title']}]({article['link']})\n"
+            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
     else:
-        message += "לא ניתן למצוא מבזקים\n"
-        if channel14_error:
-            message += f"**פרטי השגיאה:** {channel14_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {channel14_error}\n"
     
     message += "\n**קשת 12**: (הערה: הפונקציה עדיין בבנייה)\n"
     message += "**רשת 13**: (הערה: הפונקציה עדיין בבנייה)\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -537,7 +380,6 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 @app.route('/')
@@ -551,7 +393,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.debug("Initializing bot with cloudscraper and curl_cffi...")
+    logger.debug("Initializing bot with Playwright...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
