@@ -7,3 +7,4 @@ flask
 curl-cffi
 feedparser
 playwright
+brotli
