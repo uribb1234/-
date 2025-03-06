@@ -1,5 +1,6 @@
 import os
-from curl_cffi import requests as curl_requests  # עבור כאן 11
+import cloudscraper  # הוספנו חזרה
+from curl_cffi import requests as curl_requests
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -8,13 +9,11 @@ from flask import Flask
 import threading
 import logging
 from data_logger import log_interaction, save_to_excel
-from sports_scraper import scrape_sport5, scrape_sport1, scrape_one  # ייבוא פונקציות ספורט
+from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 
-# הגדרת לוגים ברמת DEBUG
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# הגדרות
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TOKEN:
     logger.error("שגיאה: הטוקן לא מוגדר!")
@@ -120,7 +119,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def scrape_ynet():
     try:
-        scraper = cloudscraper.create_scraper()
+        scraper = cloudscraper.create_scraper()  # משתמשים ב-cloudscraper
         soup = BeautifulSoup(scraper.get(NEWS_SITES['ynet'], headers=BASE_HEADERS).text, 'html.parser')
         return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
     except Exception as e:
@@ -147,7 +146,7 @@ def scrape_arutz7():
 
 def scrape_walla():
     try:
-        scraper = cloudscraper.create_scraper()
+        scraper = cloudscraper.create_scraper()  # משתמשים ב-cloudscraper
         soup = BeautifulSoup(scraper.get(NEWS_SITES['walla'], headers=BASE_HEADERS).text, 'html.parser')
         items = soup.select_one('div.top-section-newsflash.no-mobile').select('a') if soup.select_one('div.top-section-newsflash.no-mobile') else []
         results = []
