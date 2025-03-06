@@ -338,18 +338,18 @@ def scrape_kan11():
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
             
-            # הוסף "לידיעה" כקישור בסוגריים אם קיים
+            # אם יש קישור, כל הכותרת תהיה מקושרת; אם לא, טקסט רגיל
             if link != '#':
-                title_with_link = f"{title}([{link} לידיעה])"
+                full_title = f"{time} - {title}"
             else:
-                title_with_link = title
+                full_title = f"{time} - {title}"
             
             results.append({
                 'time': time,
-                'title': title_with_link,
+                'title': full_title,
                 'link': link
             })
-            logger.debug(f"Article: time='{time}', title='{title_with_link}', link='{link}'")
+            logger.debug(f"Article: time='{time}', title='{full_title}', link='{link}'")
         
         logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים נשלפו מה-HTML")
         return results, None
@@ -376,7 +376,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if sport5_news:
         for idx, article in enumerate(sport5_news[:3], 1):
             if 'time' in article:
-                message += f"{idx}. {article['time']} - [{article['title']}]({article['link']})\n"
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
             else:
                 message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
@@ -457,10 +457,10 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += "**כאן 11**:\n"
     if kan11_news:
         for idx, article in enumerate(kan11_news[:3], 1):
-            if 'time' in article:
+            if article['link'] != '#':  # אם יש קישור, כל המבזק מקושר
                 message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-            else:
-                message += f"{idx}. [{article['title']}]({article['link']})\n"
+            else:  # אם אין קישור, טקסט רגיל
+                message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
         if kan11_error:
