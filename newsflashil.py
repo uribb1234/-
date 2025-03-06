@@ -30,13 +30,13 @@ NEWS_SITES = {
 }
 
 BASE_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept': 'application/json',
     'Referer': 'https://www.google.com/'
 }
 
 API_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Encoding': 'gzip, deflate, br',
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
@@ -209,15 +209,14 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 request with curl_cffi")
-        response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome110")
+        response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome124")
         
         logger.info(f"Kan 11 response status: {response.status_code}")
         logger.debug(f"Kan 11 response headers: {response.headers}")
-        logger.debug(f"Kan 11 response content (first 500 chars): {response.text[:500]}")
+        logger.debug(f"Kan 11 response content (full): {response.text}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
-            logger.debug(f"Kan 11 full response: {response.text}")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -252,11 +251,16 @@ def scrape_kan11():
 
 def scrape_channel14():
     try:
-        logger.debug("Starting Channel 14 RSS fetch")
-        feed_url = NEWS_SITES['channel14']
-        response = requests.get(feed_url, headers=BASE_HEADERS, timeout=5)
-        logger.debug(f"Channel 14 raw RSS response status: {response.status_code}")
+        logger.debug("Starting Channel 14 RSS fetch with curl_cffi")
+        response = curl_requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=5, impersonate="chrome124")
+        
+        logger.debug(f"Channel 14 response status: {response.status_code}")
         logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
+        
+        if response.status_code != 200:
+            logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
+            logger.debug(f"Channel 14 full response: {response.text}")
+            return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
         feed = feedparser.parse(response.text)
         
