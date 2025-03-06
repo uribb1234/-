@@ -1,5 +1,5 @@
 import os
-import cloudscraper  # הוספנו חזרה
+import cloudscraper
 from curl_cffi import requests as curl_requests
 import requests
 from bs4 import BeautifulSoup
@@ -10,7 +10,7 @@ import threading
 import logging
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
-import feedparser  # הוספתי עבור RSS של ערוץ 14
+import feedparser
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ NEWS_SITES = {
     'walla': 'https://news.walla.co.il/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579',
-    'channel14': 'https://www.now14.co.il/feed/'  # הוספתי את ה-RSS של ערוץ 14
+    'channel14': 'https://www.now14.co.il/feed/'
 }
 
 BASE_HEADERS = {
@@ -212,11 +212,12 @@ def scrape_kan11():
         response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome110")
         
         logger.info(f"Kan 11 response status: {response.status_code}")
-        logger.info(f"Kan 11 response headers: {response.headers}")
-        logger.info(f"Kan 11 response content (first 500 chars): {response.text[:500]}")
+        logger.debug(f"Kan 11 response headers: {response.headers}")
+        logger.debug(f"Kan 11 response content (first 500 chars): {response.text[:500]}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
+            logger.debug(f"Kan 11 full response: {response.text}")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -253,7 +254,11 @@ def scrape_channel14():
     try:
         logger.debug("Starting Channel 14 RSS fetch")
         feed_url = NEWS_SITES['channel14']
-        feed = feedparser.parse(feed_url)
+        response = requests.get(feed_url, headers=BASE_HEADERS, timeout=5)
+        logger.debug(f"Channel 14 raw RSS response status: {response.status_code}")
+        logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
+        
+        feed = feedparser.parse(response.text)
         
         if feed.bozo:
             logger.warning(f"Failed to parse RSS feed: {feed.bozo_exception}")
@@ -262,7 +267,7 @@ def scrape_channel14():
         logger.info(f"Channel 14 RSS feed fetched, found {len(feed.entries)} entries")
         
         results = []
-        for entry in feed.entries[:3]:  # לוקחים את 3 הכתבות האחרונות
+        for entry in feed.entries[:3]:
             time = entry.get('published', 'ללא שעה')
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
@@ -375,7 +380,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = scrape_channel14()  # הוספתי את ערוץ 14
+    channel14_news, channel14_error = scrape_channel14()
     
     message = "**חדשות מערוצי טלוויזיה**\n\n"
     message += "**כאן 11**:\n"
