@@ -1,5 +1,4 @@
 import os
-import cloudscraper
 from curl_cffi import requests as curl_requests  # עבור כאן 11
 import requests
 from bs4 import BeautifulSoup
@@ -9,6 +8,7 @@ from flask import Flask
 import threading
 import logging
 from data_logger import log_interaction, save_to_excel
+from sports_scraper import scrape_sport5, scrape_sport1, scrape_one  # ייבוא פונקציות ספורט
 
 # הגדרת לוגים ברמת DEBUG
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -24,9 +24,6 @@ NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
     'arutz7': 'https://www.inn.co.il/api/NewAPI/Cat?type=10',
     'walla': 'https://news.walla.co.il/',
-    'sport5': 'https://m.sport5.co.il/',
-    'sport1': 'https://sport1.maariv.co.il/',
-    'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579'
 }
@@ -37,7 +34,6 @@ BASE_HEADERS = {
     'Referer': 'https://www.google.com/'
 }
 
-# כותרות מותאמות ל-Chrome 110 עבור curl_cffi
 API_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
@@ -170,104 +166,6 @@ def scrape_walla():
         logger.error(f"שגיאה ב-Walla: {e}")
         return []
 
-def scrape_sport5():
-    try:
-        url = 'https://m.sport5.co.il/'
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
-        
-        articles = soup.select('nav.posts-list.posts-list-articles ul li')
-        
-        results = []
-        for item in articles[:3]:
-            link_tag = item.find('a', class_='item')
-            title_tag = item.find('h2', class_='post-title')
-            time_tag = item.find('em', class_='time')
-            
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else '#'
-            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            
-            if link and not link.startswith('http'):
-                link = f"https://m.sport5.co.il{link}"
-            
-            results.append({
-                'time': time,
-                'title': title,
-                'link': link
-            })
-        
-        logger.debug(f"סקריפינג ספורט 5 הצליח: {len(results)} כתבות נשלפו")
-        return results, None
-    except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ספורט 5: {e}")
-        return [], f"שגיאה לא ידועה: {str(e)}"
-
-def scrape_sport1():
-    try:
-        url = 'https://sport1.maariv.co.il/'
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
-        
-        articles = soup.select('div.hot-news-container article.article-card')
-        
-        results = []
-        for item in articles[:3]:
-            link_tag = item.find_parent('a', class_='image-wrapper')
-            title_tag = item.find('h3', class_='article-card-title')
-            time_tag = item.find('time', class_='entry-date')
-            
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else '#'
-            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            
-            if link and not link.startswith('http'):
-                link = f"https://sport1.maariv.co.il{link}"
-            
-            results.append({
-                'time': time,
-                'title': title,
-                'link': link
-            })
-        
-        logger.debug(f"סקריפינג ספורט 1 הצליח: {len(results)} כתבות נשלפו")
-        return results, None
-    except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ספורט 1: {e}")
-        return [], f"שגיאה לא ידועה: {str(e)}"
-
-def scrape_one():
-    try:
-        url = 'https://m.one.co.il/mobile/'
-        scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
-        
-        articles = soup.select('a.mobile-hp-article-plain')
-        
-        results = []
-        for item in articles[:3]:
-            link_tag = item
-            title_tag = item.find('h1')
-            time = 'ללא שעה'
-            
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else '#'
-            
-            if link and not link.startswith('http'):
-                link = f"https://m.one.co.il{link}"
-            
-            results.append({
-                'time': time,
-                'title': title,
-                'link': link
-            })
-        
-        logger.debug(f"סקריפינג ONE הצליח: {len(results)} כתבות נשלפו")
-        return results, None
-    except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ONE: {e}")
-        return [], f"שגיאה לא ידועה: {str(e)}"
-
 def scrape_ynet_tech():
     try:
         scraper = cloudscraper.create_scraper()
@@ -320,9 +218,8 @@ def scrape_kan11():
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        # שאב את הנתונים מה-HTML
         soup = BeautifulSoup(response.text, 'html.parser')
-        items = soup.select('div.accordion-item.f-news__item')[:3]  # קח עד 3 מבזקים
+        items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
             logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
@@ -340,7 +237,7 @@ def scrape_kan11():
             
             results.append({
                 'time': time,
-                'title': title,  # רק הכותרת, בלי השעה כאן
+                'title': title,
                 'link': link
             })
             logger.debug(f"Article: time='{time}', title='{title}', link='{link}'")
@@ -451,9 +348,9 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += "**כאן 11**:\n"
     if kan11_news:
         for idx, article in enumerate(kan11_news[:3], 1):
-            if article['link'] != '#':  # אם יש קישור, כל המבזק מקושר
+            if article['link'] != '#':
                 message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-            else:  # אם אין קישור, טקסט רגיל
+            else:
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += "לא ניתן למצוא מבזקים\n"
