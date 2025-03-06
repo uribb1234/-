@@ -6,4 +6,4 @@ python-telegram-bot
 flask
 curl-cffi
 feedparser
-brotli
+playwright
