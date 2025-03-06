@@ -8,6 +8,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
+import random
+import time
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
@@ -30,19 +32,27 @@ NEWS_SITES = {
 }
 
 BASE_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': 'application/json',
     'Referer': 'https://www.google.com/'
 }
 
 API_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
     'Accept-Encoding': 'gzip, deflate, br',
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'max-age=0',
     'Referer': 'https://www.kan.org.il/',
-    'Connection': 'keep-alive'
+    'Connection': 'keep-alive',
+    'Sec-CH-UA': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+    'Sec-CH-UA-Mobile': '?0',
+    'Sec-CH-UA-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'same-origin',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1'
 }
 
 app = Flask(__name__)
@@ -208,8 +218,20 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 request with curl_cffi")
-        response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome124")
+        # עיכוב אקראי כדי לחקות התנהגות אנושית
+        time.sleep(random.uniform(1, 3))
+        
+        logger.debug("Starting Kan 11 request with cloudscraper")
+        scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'mobile': False
+            },
+            delay=10
+        )
+        
+        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=10)
         
         logger.info(f"Kan 11 response status: {response.status_code}")
         logger.debug(f"Kan 11 response headers: {response.headers}")
@@ -217,6 +239,10 @@ def scrape_kan11():
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
+            if "cloudflare" in response.text.lower():
+                logger.error("Cloudflare זיהה את הבקשה כבוט")
+            elif "forbidden" in response.text.lower():
+                logger.error("חסימה פנימית של השרת - אולי IP או חתימת בקשה")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -251,8 +277,19 @@ def scrape_kan11():
 
 def scrape_channel14():
     try:
-        logger.debug("Starting Channel 14 RSS fetch with curl_cffi")
-        response = curl_requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=5, impersonate="chrome124")
+        time.sleep(random.uniform(1, 3))
+        
+        logger.debug("Starting Channel 14 RSS fetch with cloudscraper")
+        scraper = cloudscraper.create_scraper(
+            browser={
+                'browser': 'chrome',
+                'platform': 'windows',
+                'mobile': False
+            },
+            delay=10
+        )
+        
+        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=10)
         
         logger.debug(f"Channel 14 response status: {response.status_code}")
         logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
@@ -260,6 +297,8 @@ def scrape_channel14():
         if response.status_code != 200:
             logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
             logger.debug(f"Channel 14 full response: {response.text}")
+            if "cloudflare" in response.text.lower():
+                logger.error("Cloudflare זיהה את הבקשה כבוט")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
         feed = feedparser.parse(response.text)
