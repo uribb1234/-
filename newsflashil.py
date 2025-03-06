@@ -213,8 +213,8 @@ async def scrape_kan11():
             link_tag = item.select_one('a.card-link')
             article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else '#'
-            if not link.startswith('http'):
+            link = link_tag['href'] if link_tag else None
+            if link and not link.startswith('http'):
                 link = f"https://www.kan.org.il{link}"
             results.append({'time': article_time, 'title': title, 'link': link})
             logger.debug(f"Kan 11 article: time='{article_time}', title='{title}', link='{link}'")
@@ -227,25 +227,20 @@ async def scrape_kan11():
 
 async def scrape_channel14():
     try:
-        logger.debug("Starting Channel 14 scrape with Playwright")
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.goto(NEWS_SITES['channel14'], wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(5)  # ממתין לפתרון Cloudflare
-            content = await page.content()
-            logger.debug(f"Channel 14 content: {content[:500]}")  # לוג של התוכן הראשוני לבדיקה
-            await browser.close()
+        logger.debug("Starting Channel 14 scrape with RSS")
+        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=10)
+        content = response.text
+        logger.debug(f"Channel 14 RSS content: {content[:500]}")  # לוג של התוכן הראשוני
         
         feed = feedparser.parse(content)
         if feed.bozo:
             logger.warning(f"Failed to parse Channel 14 RSS: {feed.bozo_exception}")
-            logger.debug(f"Channel 14 full content: {content}")  # לוג מלא של התוכן אם יש שגיאה
+            logger.debug(f"Channel 14 full content: {content}")
             return [], f"שגיאה בעיבוד ה-RSS: {feed.bozo_exception}"
         
         results = []
-        for entry in feed.entries[:3]:
-            article_time = entry.get('published', 'ללא שעה')
+        for entry in feed.entries[:3]:  # לוקח את 3 הפריטים הראשונים כמבזקים
+            article_time = entry.get('pubDate', 'ללא שעה')
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
             results.append({'time': article_time, 'title': title, 'link': link})
@@ -326,7 +321,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
+    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...\n*הערה: הטעינה עשויה להיות ארוכה מהרגיל בגלל שימוש בדפדפן וירטואלי.*")
     
     kan11_news, kan11_error = await scrape_kan11()
     channel14_news, channel14_error = await scrape_channel14()
@@ -334,7 +329,10 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
         for idx, article in enumerate(kan11_news[:3], 1):
-            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            if article['link']:
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {kan11_error}\n"
     
