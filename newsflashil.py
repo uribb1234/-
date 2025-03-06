@@ -338,18 +338,12 @@ def scrape_kan11():
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
             
-            # אם יש קישור, כל הכותרת תהיה מקושרת; אם לא, טקסט רגיל
-            if link != '#':
-                full_title = f"{time} - {title}"
-            else:
-                full_title = f"{time} - {title}"
-            
             results.append({
                 'time': time,
-                'title': full_title,
+                'title': title,  # רק הכותרת, בלי השעה כאן
                 'link': link
             })
-            logger.debug(f"Article: time='{time}', title='{full_title}', link='{link}'")
+            logger.debug(f"Article: time='{time}', title='{title}', link='{link}'")
         
         logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים נשלפו מה-HTML")
         return results, None
