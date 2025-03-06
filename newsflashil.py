@@ -6,8 +6,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-import random
-import time
+import asyncio
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
@@ -186,6 +185,7 @@ def scrape_ynet_tech():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
+
 async def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 scrape with Playwright")
@@ -312,7 +312,7 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
-   async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = query.from_user.id
     chat = await context.bot.get_chat(user_id)
@@ -322,8 +322,8 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
-    kan11_news, kan11_error = await scrape_kan11()  # שינוי ל-await
-    channel14_news, channel14_error = await scrape_channel14()  # שינוי ל-await
+    kan11_news, kan11_error = await scrape_kan11()
+    channel14_news, channel14_error = await scrape_channel14()
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
@@ -344,7 +344,17 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup) 
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} triggered latest_news, username: {username}")
+    log_interaction(user_id, "latest_news", username)
+    await query.answer()
+    
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
     walla_news = scrape_walla()
