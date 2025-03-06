@@ -1,7 +1,8 @@
+pandas
 cloudscraper
 requests
 beautifulsoup4
 python-telegram-bot
 flask
 curl-cffi
-pandas
+feedparser
