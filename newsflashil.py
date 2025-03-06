@@ -46,7 +46,145 @@ BASE_HEADERS = {
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
-# ... (שאר הפונקציות נשארות אותו דבר: start, download, latest, scrape_ynet, scrape_arutz7, scrape_walla, scrape_ynet_tech)
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} sent /start, username: {username}")
+    log_interaction(user_id, "/start", username)
+    await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
+
+async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} sent /download, username: {username}")
+    log_interaction(user_id, "/download", username)
+    SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
+
+    if not SECRET_PASSWORD:
+        await update.message.reply_text("שגיאה: הסיסמה לא מוגדרת בשרת!")
+        return
+    
+    if not context.args or context.args[0] != SECRET_PASSWORD:
+        await update.message.reply_text("סיסמה שגויה! אין גישה.")
+        return
+    
+    try:
+        filename = save_to_excel()
+        if not os.path.exists(filename):
+            await update.message.reply_text("שגיאה: הקובץ לא נוצר!")
+            return
+        with open(filename, 'rb') as file:
+            await update.message.reply_text("הנה הנתונים שלך!")
+            await update.message.reply_document(document=file, filename="bot_usage.xlsx")
+        os.remove(filename)
+    except Exception as e:
+        logger.error(f"שגיאה בשליחת הקובץ: {e}")
+        await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
+
+async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} sent /latest, username: {username}")
+    log_interaction(user_id, "/latest", username)
+    await update.message.reply_text("מחפש מבזקים...")
+    ynet_news = scrape_ynet()
+    arutz7_news = scrape_arutz7()
+    walla_news = scrape_walla()
+
+    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
+    message = "📰 **המבזקים האחרונים** 📰\n\n"
+    for site, articles in news.items():
+        message += f"**{site}:**\n"
+        if articles:
+            for idx, article in enumerate(articles[:3], 1):
+                if 'time' in article:
+                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                else:
+                    message += f"{idx}. [{article['title']}]({article['link']})\n"
+        else:
+            message += "לא ניתן לטעון כרגע\n"
+        message += "\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
+        [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+def scrape_ynet():
+    try:
+        response = requests.get(NEWS_SITES['ynet'], headers=BASE_HEADERS)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        return [{'title': item.text.strip(), 'link': item.find('a')['href']} for item in soup.select('div.slotTitle')[:5]]
+    except Exception as e:
+        logger.error(f"שגיאה ב-Ynet: {e}")
+        return []
+
+def scrape_arutz7():
+    try:
+        response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS)
+        logger.debug(f"Arutz 7 API response status: {response.status_code}")
+        response.raise_for_status()
+        data = response.json()
+        items = data.get('Items', []) if 'Items' in data else data
+        return [
+            {
+                'time': item.get('time', item.get('itemDate', "ללא שעה")[:16].replace('T', ' ')),
+                'title': item.get('title', 'ללא כותרת'),
+                'link': item.get('shotedLink', item.get('link', '#'))
+            } for item in items[:3]
+        ]
+    except Exception as e:
+        logger.error(f"שגיאה בערוץ 7: {e}")
+        return []
+
+def scrape_walla():
+    try:
+        response = requests.get(NEWS_SITES['walla'], headers=BASE_HEADERS)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        items = soup.select_one('div.top-section-newsflash.no-mobile').select('a') if soup.select_one('div.top-section-newsflash.no-mobile') else []
+        results = []
+        for item in items:
+            title = item.get_text(strip=True)
+            if title in ["מבזקי חדשות", "מבזקים"]:
+                continue
+            if len(title) > 5 and title[2] == ':':
+                title = title[:5] + ": " + title[5:]
+            link = item['href']
+            if not link.startswith('http'):
+                link = f"https://news.walla.co.il{link}"
+            results.append({'title': title, 'link': link})
+        return results[:3]
+    except Exception as e:
+        logger.error(f"שגיאה ב-Walla: {e}")
+        return []
+
+def scrape_ynet_tech():
+    try:
+        response = requests.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=5)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        articles = soup.select('div.slotView')[:3]
+        results = []
+        for idx, article in enumerate(articles):
+            title_tag = article.select_one('div.slotTitle a')
+            link_tag = title_tag
+            time_tag = article.select_one('span.dateView')
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else '#'
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            if not link.startswith('http'):
+                link = f"https://www.ynet.co.il{link}"
+            results.append({'time': article_time, 'title': title, 'link': link})
+        return results, None
+    except Exception as e:
+        logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
+        return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def scrape_kan11():
     try:
@@ -57,24 +195,27 @@ async def scrape_kan11():
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(5)  # ממתין לפתרון Cloudflare
             content = await page.content()
-            logger.debug(f"Kan 11 HTML content: {content[:500]}...")  # לוג של 500 תווים ראשונים
+            logger.debug(f"Kan 11 HTML content: {content[:500]}")  # לוג של ה-HTML הראשוני לבדיקה
             await browser.close()
         
         soup = BeautifulSoup(content, 'html.parser')
-        items = soup.select('div.accordion-item.f-news__item')  # בדוק אם הסלקטור תואם
+        items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
             logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+            logger.debug(f"Kan 11 full HTML: {content}")  # לוג מלא של ה-HTML אם אין מבזקים
             return [], "לא נמצאו מבזקים ב-HTML"
         
         results = []
-        for item in items[:3]:
+        for item in items:
             time_tag = item.select_one('div.time')
             title_tag = item.select_one('div.d-flex.flex-grow-1 span')
             link_tag = item.select_one('a.card-link')
             article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
+            if not link.startswith('http'):
+                link = f"https://www.kan.org.il{link}"
             results.append({'time': article_time, 'title': title, 'link': link})
             logger.debug(f"Kan 11 article: time='{article_time}', title='{title}', link='{link}'")
         
@@ -93,16 +234,13 @@ async def scrape_channel14():
             await page.goto(NEWS_SITES['channel14'], wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(5)  # ממתין לפתרון Cloudflare
             content = await page.content()
-            logger.debug(f"Channel 14 content: {content[:500]}...")  # לוג של 500 תווים ראשונים
+            logger.debug(f"Channel 14 content: {content[:500]}")  # לוג של התוכן הראשוני לבדיקה
             await browser.close()
-        
-        if "<html" in content.lower():
-            logger.warning("Channel 14 returned HTML instead of RSS")
-            return [], "התקבל HTML במקום RSS, כנראה חסימה של Cloudflare"
         
         feed = feedparser.parse(content)
         if feed.bozo:
             logger.warning(f"Failed to parse Channel 14 RSS: {feed.bozo_exception}")
+            logger.debug(f"Channel 14 full content: {content}")  # לוג מלא של התוכן אם יש שגיאה
             return [], f"שגיאה בעיבוד ה-RSS: {feed.bozo_exception}"
         
         results = []
@@ -119,4 +257,158 @@ async def scrape_channel14():
         logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
-# ... (שאר הפונקציות נשארות אותו דבר: sports_news, tech_news, tv_news, latest_news, home, run_flask, if __name__ == "__main__")
+async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} triggered sports_news, username: {username}")
+    log_interaction(user_id, "sports_news", username)
+    await query.answer()
+    await query.message.reply_text("מחפש מבזקי ספורט...")
+    
+    sport5_news, sport5_error = scrape_sport5()
+    sport1_news, sport1_error = scrape_sport1()
+    one_news, one_error = scrape_one()
+    
+    message = "**ספורט 5**\n"
+    if sport5_news:
+        for idx, article in enumerate(sport5_news[:3], 1):
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport5_error}\n"
+    
+    message += "\n**ספורט 1**\n"
+    if sport1_news:
+        for idx, article in enumerate(sport1_news[:3], 1):
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport1_error}\n"
+    
+    message += "\n**ONE**\n"
+    if one_news:
+        for idx, article in enumerate(one_news[:3], 1):
+            message += f"{idx}. [{article['title']}]({article['link']})\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {one_error}\n"
+    
+    keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} triggered tech_news, username: {username}")
+    log_interaction(user_id, "tech_news", username)
+    await query.answer()
+    await query.message.reply_text("מחפש חדשות טכנולוגיה...")
+    
+    ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
+    message = "**Ynet Tech**\n"
+    if ynet_tech_news:
+        for idx, article in enumerate(ynet_tech_news[:3], 1):
+            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {ynet_tech_error}\n"
+    
+    keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} triggered tv_news, username: {username}")
+    log_interaction(user_id, "tv_news", username)
+    await query.answer()
+    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
+    
+    kan11_news, kan11_error = await scrape_kan11()
+    channel14_news, channel14_error = await scrape_channel14()
+    
+    message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
+    if kan11_news:
+        for idx, article in enumerate(kan11_news[:3], 1):
+            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {kan11_error}\n"
+    
+    message += "\n**עכשיו 14**:\n"
+    if channel14_news:
+        for idx, article in enumerate(channel14_news[:3], 1):
+            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {channel14_error}\n"
+    
+    message += "\n**קשת 12**: (הערה: הפונקציה עדיין בבנייה)\n"
+    message += "**רשת 13**: (הערה: הפונקציה עדיין בבנייה)\n"
+    
+    keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} triggered latest_news, username: {username}")
+    log_interaction(user_id, "latest_news", username)
+    await query.answer()
+    
+    ynet_news = scrape_ynet()
+    arutz7_news = scrape_arutz7()
+    walla_news = scrape_walla()
+
+    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
+    message = "📰 **המבזקים האחרונים** 📰\n\n"
+    for site, articles in news.items():
+        message += f"**{site}:**\n"
+        if articles:
+            for idx, article in enumerate(articles[:3], 1):
+                if 'time' in article:
+                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                else:
+                    message += f"{idx}. [{article['title']}]({article['link']})\n"
+        else:
+            message += "לא ניתן לטעון כרגע\n"
+        message += "\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
+        [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+
+@app.route('/')
+def home():
+    logger.debug("Flask server accessed")
+    return "Bot is alive!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    logger.debug(f"Starting Flask on port {port}")
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    logger.debug("Initializing bot with Playwright...")
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(CommandHandler("latest", latest))
+    bot_app.add_handler(CommandHandler("download", download))
+    bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))
+    bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
+    bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
+
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
+    logger.debug("Starting bot polling...")
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
