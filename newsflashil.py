@@ -316,11 +316,17 @@ def scrape_kan11():
         logger.debug(f"Kan 11 API response headers: {response.headers}")
         logger.debug(f"Kan 11 API response content: {response.text[:500]}")
         
+        # נסה לפרק את ה-JSON, אבל תפוס שגיאות בנפרד
+        try:
+            data = response.json()
+        except ValueError as json_error:
+            logger.error(f"שגיאה בפריקת JSON: {str(json_error)} - Response content: {response.text[:500]}")
+            return [], f"שגיאה בפריקת JSON: {str(json_error)}"
+        
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        data = response.json()
         items = data.get('Items', [])
         logger.debug(f"Kan 11 API returned {len(items)} items")
         
