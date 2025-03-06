@@ -13,7 +13,7 @@ import time
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
-import brotli  # להתמודד עם דחיסת Brotli
+import brotli
 
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -220,42 +220,45 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 request with cloudscraper")
-        time.sleep(random.uniform(2, 5))  # עיכוב מוגבר
+        time.sleep(random.uniform(2, 5))
         
-        # יצירת סשן עם עוגיות
         scraper = cloudscraper.create_scraper(
             browser={
                 'browser': 'chrome',
                 'platform': 'windows',
                 'mobile': False
             },
-            delay=15  # עיכוב מוגבר
+            delay=15
         )
         
-        # בקשה ראשונית לדף הבית כדי לקבל עוגיות
         scraper.get('https://www.kan.org.il/', headers=API_HEADERS)
         time.sleep(random.uniform(1, 3))
         
-        # הבקשה הראשית עם עוגיות
         response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=15)
         
         logger.info(f"Kan 11 response status: {response.status_code}")
         logger.debug(f"Kan 11 response headers: {response.headers}")
         
-        # פתיחת דחיסת Brotli אם קיימת
         content = response.content
+        decompressed_text = None
         if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
-            content = brotli.decompress(response.content)
-            logger.debug(f"Kan 11 decompressed content (full): {content.decode('utf-8', errors='ignore')}")
+            try:
+                content = brotli.decompress(response.content)
+                decompressed_text = content.decode('utf-8', errors='ignore')
+                logger.debug(f"Kan 11 decompressed content (full): {decompressed_text}")
+            except brotli.error as e:
+                logger.error(f"Brotli decompression failed: {str(e)}")
+                decompressed_text = response.text  # נסיון להשתמש בטקסט הגולמי
+                logger.debug(f"Kan 11 raw content (fallback): {decompressed_text}")
         else:
-            logger.debug(f"Kan 11 response content (full): {response.text}")
+            decompressed_text = response.text
+            logger.debug(f"Kan 11 response content (full): {decompressed_text}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
-            decompressed_text = content.decode('utf-8', errors='ignore') if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text
-            if "cloudflare" in decompressed_text.lower():
+            if decompressed_text and "cloudflare" in decompressed_text.lower():
                 logger.error("Cloudflare זיהה את הבקשה כבוט")
-            elif "forbidden" in decompressed_text.lower():
+            elif decompressed_text and "forbidden" in decompressed_text.lower():
                 logger.error("חסימה פנימית של השרת")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
@@ -292,7 +295,7 @@ def scrape_kan11():
 def scrape_channel14():
     try:
         logger.debug("Starting Channel 14 RSS fetch with cloudscraper")
-        time.sleep(random.uniform(2, 5))  # עיכוב מוגבר
+        time.sleep(random.uniform(2, 5))
         
         scraper = cloudscraper.create_scraper(
             browser={
@@ -300,10 +303,9 @@ def scrape_channel14():
                 'platform': 'windows',
                 'mobile': False
             },
-            delay=15  # עיכוב מוגבר
+            delay=15
         )
         
-        # בקשה ראשונית לדף הבית
         scraper.get('https://www.now14.co.il/', headers=BASE_HEADERS)
         time.sleep(random.uniform(1, 3))
         
@@ -312,18 +314,24 @@ def scrape_channel14():
         logger.debug(f"Channel 14 response status: {response.status_code}")
         logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
         
-        # פתיחת דחיסת Brotli
         content = response.content
+        decompressed_text = None
         if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
-            content = brotli.decompress(response.content)
-            logger.debug(f"Channel 14 decompressed content (full): {content.decode('utf-8', errors='ignore')}")
+            try:
+                content = brotli.decompress(response.content)
+                decompressed_text = content.decode('utf-8', errors='ignore')
+                logger.debug(f"Channel 14 decompressed content (full): {decompressed_text}")
+            except brotli.error as e:
+                logger.error(f"Brotli decompression failed: {str(e)}")
+                decompressed_text = response.text
+                logger.debug(f"Channel 14 raw content (fallback): {decompressed_text}")
         else:
-            logger.debug(f"Channel 14 response content (full): {response.text}")
+            decompressed_text = response.text
+            logger.debug(f"Channel 14 response content (full): {decompressed_text}")
         
         if response.status_code != 200:
             logger.warning(f"Channel 14 חסם את הבקשה (status: {response.status_code})")
-            decompressed_text = content.decode('utf-8', errors='ignore') if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br' else response.text
-            if "cloudflare" in decompressed_text.lower():
+            if decompressed_text and "cloudflare" in decompressed_text.lower():
                 logger.error("Cloudflare זיהה את הבקשה כבוט")
             return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
