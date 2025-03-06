@@ -1,7 +1,7 @@
 cloudscraper
 requests
 beautifulsoup4
-python-telegram-bot>=20.0
+python-telegram-bot
 flask
-curl-cffi
+requests-html
 pandas
