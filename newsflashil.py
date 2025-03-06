@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from flask import Flask
 import threading
 import logging
-from requests_html import HTMLSession
+from requests_html import AsyncHTMLSession  # שינוי ל-AsyncHTMLSession
 from data_logger import log_interaction, save_to_excel
 
 # הגדרת לוגים לדיבאג
@@ -28,11 +28,11 @@ NEWS_SITES = {
     'sport1': 'https://sport1.maariv.co.il/',
     'one': 'https://m.one.co.il/mobile/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
-    'channel14': 'https://www.now14.co.il/news-flash'  # תיקון ה-URL לדף המבזקים
+    'channel14': 'https://www.now14.co.il/news-flash'
 }
 
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',  # עדכון לגרסה חדשה יותר
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
     'Referer': 'https://www.google.com/',
@@ -268,11 +268,11 @@ def scrape_ynet_tech():
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
-def scrape_channel14():
+async def scrape_channel14():
     try:
-        session = HTMLSession()
-        response = session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=5)  # הגדלת ה-timeout
-        response.html.render(timeout=10, sleep=1)  # הגדלת זמן הרינדור וההמתנה
+        session = AsyncHTMLSession()
+        response = await session.get(NEWS_SITES['channel14'], headers=HEADERS, timeout=5)
+        await response.html.arender(timeout=10, sleep=1)  # שימוש ב-arender לאסינכרוניות
         
         logger.info(f"Channel 14 response status: {response.status_code}")
         logger.info(f"Channel 14 HTML length: {len(response.html.html)} characters")
@@ -283,7 +283,6 @@ def scrape_channel14():
         
         soup = BeautifulSoup(response.html.html, 'html.parser')
         
-        # חילוץ מבזקים מדף המבזקים
         articles = soup.select("div.flex.transition-all.duration-500.flex-col.cursor-pointer")[:3]
         logger.info(f"Found {len(articles)} articles in Channel 14")
         
@@ -313,6 +312,8 @@ def scrape_channel14():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
+    finally:
+        await session.close()  # סגירת הסשן כדי למנוע דליפות משאבים
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -325,7 +326,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     arutz7_news = scrape_arutz7()
     walla_news = scrape_walla()
 
-    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}  # הסרת ערוץ 14
+    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
     message = "📰 **המבזקים האחרונים** 📰\n\n"
     for site, articles in news.items():
         message += f"**{site}:**\n"
@@ -442,7 +443,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
-    channel14_news, channel14_error = scrape_channel14()
+    channel14_news, channel14_error = await scrape_channel14()  # קריאה אסינכרונית
     
     message = "**חדשות מערוצי טלוויזיה**\n\n"
     message += "**כאן 11**: (הערה: הפונקציה עדיין בבנייה)\n"
@@ -478,7 +479,7 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     arutz7_news = scrape_arutz7()
     walla_news = scrape_walla()
 
-    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}  # הסרת ערוץ 14
+    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
     message = "📰 **המבזקים האחרונים** 📰\n\n"
     for site, articles in news.items():
         message += f"**{site}:**\n"
