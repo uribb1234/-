@@ -194,17 +194,17 @@ def scrape_ynet_tech():
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
-            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'  # שינוי שם משתנה כדי להימנע מקונפליקט
             
             if not link.startswith('http'):
                 link = f"https://www.ynet.co.il{link}"
             
             results.append({
-                'time': time,
+                'time': article_time,
                 'title': title,
                 'link': link
             })
-            logger.debug(f"Article {idx+1}: title='{title}', link='{link}', time='{time}'")
+            logger.debug(f"Article {idx+1}: time='{article_time}', title='{title}', link='{link}'")
         
         if not results:
             logger.warning("לא נמצאו כתבות ב-Ynet Tech")
@@ -218,10 +218,10 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        # עיכוב אקראי כדי לחקות התנהגות אנושית
+        logger.debug("Starting Kan 11 request with cloudscraper")
+        # עיכוב אקראי בתוך ה-try
         time.sleep(random.uniform(1, 3))
         
-        logger.debug("Starting Kan 11 request with cloudscraper")
         scraper = cloudscraper.create_scraper(
             browser={
                 'browser': 'chrome',
@@ -258,16 +258,16 @@ def scrape_kan11():
             title_tag = item.select_one('div.d-flex.flex-grow-1 span')
             link_tag = item.select_one('a.card-link')
             
-            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'  # שינוי שם משתנה
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
             
             results.append({
-                'time': time,
+                'time': article_time,
                 'title': title,
                 'link': link
             })
-            logger.debug(f"Article: time='{time}', title='{title}', link='{link}'")
+            logger.debug(f"Article: time='{article_time}', title='{title}', link='{link}'")
         
         logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים נשלפו מה-HTML")
         return results, None
@@ -277,9 +277,10 @@ def scrape_kan11():
 
 def scrape_channel14():
     try:
+        logger.debug("Starting Channel 14 RSS fetch with cloudscraper")
+        # עיכוב אקראי בתוך ה-try
         time.sleep(random.uniform(1, 3))
         
-        logger.debug("Starting Channel 14 RSS fetch with cloudscraper")
         scraper = cloudscraper.create_scraper(
             browser={
                 'browser': 'chrome',
@@ -311,16 +312,16 @@ def scrape_channel14():
         
         results = []
         for entry in feed.entries[:3]:
-            time = entry.get('published', 'ללא שעה')
+            article_time = entry.get('published', 'ללא שעה')  # שינוי שם משתנה
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
             
             results.append({
-                'time': time,
+                'time': article_time,
                 'title': title,
                 'link': link
             })
-            logger.debug(f"Channel 14 article: time='{time}', title='{title}', link='{link}'")
+            logger.debug(f"Channel 14 article: time='{article_time}', title='{title}', link='{link}'")
         
         logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים נשלפו מה-RSS")
         return results, None
