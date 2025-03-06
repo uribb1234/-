@@ -291,9 +291,9 @@ def scrape_ynet_tech():
                 link = f"https://www.ynet.co.il{link}"
             
             results.append({
+                'time': time,
                 'title': title,
-                'link': link,
-                'time': time
+                'link': link
             })
             logger.debug(f"Article {idx+1}: title='{title}', link='{link}', time='{time}'")
         
@@ -309,56 +309,52 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 API request with curl_cffi")
+        logger.debug("Starting Kan 11 request with curl_cffi")
         response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome110")
         
-        # הדפס ישירות כדי לעקוף בעיות לוגר
-        print(f"Kan 11 API response status: {response.status_code}")
-        print(f"Kan 11 API response headers: {response.headers}")
-        print(f"Kan 11 API response content (first 500 chars): {response.text[:500]}")
-        
-        logger.info(f"Kan 11 API response status: {response.status_code}")
-        logger.info(f"Kan 11 API response headers: {response.headers}")
-        logger.info(f"Kan 11 API response content (first 500 chars): {response.text[:500]}")
+        logger.info(f"Kan 11 response status: {response.status_code}")
+        logger.info(f"Kan 11 response headers: {response.headers}")
+        logger.info(f"Kan 11 response content (first 500 chars): {response.text[:500]}")
         
         if response.status_code != 200:
             logger.warning(f"Kan 11 חסם את הבקשה (status: {response.status_code})")
-            soup = BeautifulSoup(response.text, 'html.parser')
-            print(f"Kan 11 response parsed as HTML: {soup.prettify()[:500]}")
-            logger.debug(f"Kan 11 response parsed as HTML: {soup.prettify()[:500]}")
-            return [], f"שגיאת {response.status_code}: הגישה נחסמה - קיבלנו HTML במקום JSON"
+            return [], f"שגיאת {response.status_code}: הגישה נחסמה"
         
-        # נסה לפרק כ-JSON
-        try:
-            data = response.json()
-        except ValueError as json_error:
-            logger.error(f"שגיאה בפריקת JSON: {str(json_error)} - Response content: {response.text[:500]}")
-            soup = BeautifulSoup(response.text, 'html.parser')
-            print(f"Kan 11 response parsed as HTML: {soup.prettify()[:500]}")
-            logger.debug(f"Kan 11 response parsed as HTML: {soup.prettify()[:500]}")
-            return [], f"שגיאה בפריקת JSON: {str(json_error)} - קיבלנו HTML במקום JSON"
-        
-        items = data.get('Items', [])
-        logger.debug(f"Kan 11 API returned {len(items)} items")
+        # שאב את הנתונים מה-HTML
+        soup = BeautifulSoup(response.text, 'html.parser')
+        items = soup.select('div.accordion-item.f-news__item')[:3]  # קח עד 3 מבזקים
         
         if not items:
-            logger.warning("לא נמצאו כתבות ב-API של כאן 11")
-            return [], "לא נמצאו כתבות ב-API"
+            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+            return [], "לא נמצאו מבזקים ב-HTML"
         
         results = []
-        for item in items[:3]:
-            title = item.get('Title', 'ללא כותרת')
-            link = item.get('Link', '#')
-            time = item.get('Date', 'ללא שעה')
-            if time and isinstance(time, str):
-                time = time.replace('T', ' ')[:16]
-            results.append({'title': title, 'link': link, 'time': time})
-            logger.debug(f"Article: title='{title}', link='{link}', time='{time}'")
+        for item in items:
+            time_tag = item.select_one('div.time')
+            title_tag = item.select_one('div.d-flex.flex-grow-1 span')
+            link_tag = item.select_one('a.card-link')
+            
+            time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else '#'
+            
+            # הוסף "לידיעה" כקישור בסוגריים אם קיים
+            if link != '#':
+                title_with_link = f"{title}([{link} לידיעה])"
+            else:
+                title_with_link = title
+            
+            results.append({
+                'time': time,
+                'title': title_with_link,
+                'link': link
+            })
+            logger.debug(f"Article: time='{time}', title='{title_with_link}', link='{link}'")
         
-        logger.info(f"סקריפינג כאן 11 (API) הצליח: {len(results)} כתבות נשלפו")
+        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים נשלפו מה-HTML")
         return results, None
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג כאן 11 (API): {str(e)}")
+        logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
