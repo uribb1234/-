@@ -3,6 +3,5 @@ requests
 beautifulsoup4
 python-telegram-bot
 flask
-requests-html
+curl-cffi
 pandas
-lxml_html_clean
