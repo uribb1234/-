@@ -219,26 +219,33 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 request with cloudscraper")
-        time.sleep(random.uniform(2, 5))
+        logger.debug("Starting Kan 11 request with advanced cloudscraper")
+        time.sleep(random.uniform(3, 6))  # עיכוב מוגבר לחיקוי התנהגות אנושית
         
+        # שימוש ב-cloudscraper עם תמיכה משופרת ב-JS
         scraper = cloudscraper.create_scraper(
             browser={
                 'browser': 'chrome',
                 'platform': 'windows',
                 'mobile': False
             },
-            delay=15
+            delay=20,  # עיכוב גדול יותר
+            interpreter='nodejs',  # תמיכה בפתרון אתגרי JS
+            allow_brotli=True  # תמיכה מובנית ב-Brotli
         )
         
-        scraper.get('https://www.kan.org.il/', headers=API_HEADERS)
-        time.sleep(random.uniform(1, 3))
+        # בקשה ראשונית לדף הבית לאיסוף עוגיות
+        home_response = scraper.get('https://www.kan.org.il/', headers=API_HEADERS)
+        logger.debug(f"Kan 11 home page status: {home_response.status_code}")
+        time.sleep(random.uniform(2, 4))
         
-        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=15)
+        # הבקשה הראשית עם עוגיות שנאספו
+        response = scraper.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=20)
         
         logger.info(f"Kan 11 response status: {response.status_code}")
         logger.debug(f"Kan 11 response headers: {response.headers}")
         
+        # ניהול תוכן דחוס
         content = response.content
         decompressed_text = None
         if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
@@ -248,7 +255,7 @@ def scrape_kan11():
                 logger.debug(f"Kan 11 decompressed content (full): {decompressed_text}")
             except brotli.error as e:
                 logger.error(f"Brotli decompression failed: {str(e)}")
-                decompressed_text = response.text  # נסיון להשתמש בטקסט הגולמי
+                decompressed_text = response.text
                 logger.debug(f"Kan 11 raw content (fallback): {decompressed_text}")
         else:
             decompressed_text = response.text
@@ -294,8 +301,8 @@ def scrape_kan11():
 
 def scrape_channel14():
     try:
-        logger.debug("Starting Channel 14 RSS fetch with cloudscraper")
-        time.sleep(random.uniform(2, 5))
+        logger.debug("Starting Channel 14 RSS fetch with advanced cloudscraper")
+        time.sleep(random.uniform(3, 6))  # עיכוב מוגבר
         
         scraper = cloudscraper.create_scraper(
             browser={
@@ -303,17 +310,22 @@ def scrape_channel14():
                 'platform': 'windows',
                 'mobile': False
             },
-            delay=15
+            delay=20,
+            interpreter='nodejs',  # תמיכה בפתרון אתגרי JS
+            allow_brotli=True
         )
         
-        scraper.get('https://www.now14.co.il/', headers=BASE_HEADERS)
-        time.sleep(random.uniform(1, 3))
+        # בקשה ראשונית לדף הבית
+        home_response = scraper.get('https://www.now14.co.il/', headers=BASE_HEADERS)
+        logger.debug(f"Channel 14 home page status: {home_response.status_code}")
+        time.sleep(random.uniform(2, 4))
         
-        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=15)
+        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=20)
         
         logger.debug(f"Channel 14 response status: {response.status_code}")
         logger.debug(f"Channel 14 raw RSS content (first 500 chars): {response.text[:500]}")
         
+        # ניהול תוכן דחוס
         content = response.content
         decompressed_text = None
         if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'br':
