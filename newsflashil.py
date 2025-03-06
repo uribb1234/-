@@ -37,11 +37,11 @@ BASE_HEADERS = {
     'Referer': 'https://www.google.com/'
 }
 
-# כותרות מותאמות ל-Chrome 133 עבור curl_cffi
+# כותרות מותאמות ל-Chrome 110 עבור curl_cffi
 API_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br, zstd',
+    'Accept-Encoding': 'gzip, deflate, br',
     'Accept-Language': 'he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7',
     'Cache-Control': 'max-age=0',
     'Referer': 'https://www.kan.org.il/',
@@ -310,7 +310,7 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 API request with curl_cffi")
-        response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome133")
+        response = curl_requests.get(NEWS_SITES['kan11'], headers=API_HEADERS, timeout=1, impersonate="chrome110")
         
         logger.debug(f"Kan 11 API response status: {response.status_code}")
         logger.debug(f"Kan 11 API response headers: {response.headers}")
