@@ -9,3 +9,4 @@ feedparser
 playwright
 brotli
 openpyxl
+aiohttp
