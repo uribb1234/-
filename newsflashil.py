@@ -11,7 +11,8 @@ import asyncio
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
-import random
+import signal
+from contextlib import contextmanager
 
 # הגדרת לוגינג
 logging.basicConfig(
@@ -47,101 +48,22 @@ BASE_HEADERS = {
     'Upgrade-Insecure-Requests': '1'
 }
 
+# URL של ה-Heroku Proxy שסיפקת
+HEROKU_PROXY_URL = "https://newsflashil-proxy-68a4b6e68b6c.herokuapp.com/"
+
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
-# רשימת הפרוקסי שסיפקת
-FREE_PROXIES = [
-    {'http': 'http://62.210.222.58:3128', 'https': 'http://62.210.222.58:3128'},
-    {'http': 'http://51.195.107.167:80', 'https': 'http://51.195.107.167:80'},
-    {'http': 'http://141.11.103.136:8080', 'https': 'http://141.11.103.136:8080'},
-    {'http': 'http://51.16.179.113:1080', 'https': 'http://51.16.179.113:1080'},
-    {'http': 'http://51.16.199.206:3128', 'https': 'http://51.16.199.206:3128'}
-]
-
-def get_working_proxy(url):
-    for proxy in FREE_PROXIES:
-        try:
-            logger.debug(f"Trying proxy: {proxy}")
-            response = requests.get(url, headers=BASE_HEADERS, proxies=proxy, timeout=5)
-            response.raise_for_status()
-            logger.info(f"Found working proxy: {proxy}")
-            return proxy
-        except Exception as e:
-            logger.debug(f"Proxy failed: {proxy} - {str(e)}")
-    logger.error("No working proxies found")
-    return None
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    chat = await context.bot.get_chat(user_id)
-    username = chat.username
-    logger.debug(f"User {user_id} sent /start, username: {username}")
-    log_interaction(user_id, "/start", username)
-    await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
-
-async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    chat = await context.bot.get_chat(user_id)
-    username = chat.username
-    logger.debug(f"User {user_id} sent /download, username: {username}")
-    log_interaction(user_id, "/download", username)
-    SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
-
-    if not SECRET_PASSWORD:
-        await update.message.reply_text("שגיאה: הסיסמה לא מוגדרת בשרת!")
-        return
-    
-    if not context.args or context.args[0] != SECRET_PASSWORD:
-        await update.message.reply_text("סיסמה שגויה! אין גישה.")
-        return
-    
+@contextmanager
+def timeout(seconds):
+    def handler(signum, frame):
+        raise TimeoutError("סקרייפינג נמשך יותר מדי זמן")
+    signal.signal(signal.SIGALRM, handler)
+    signal.alarm(seconds)
     try:
-        filename = save_to_excel()
-        if not os.path.exists(filename):
-            await update.message.reply_text("שגיאה: הקובץ לא נוצר!")
-            return
-        with open(filename, 'rb') as file:
-            await update.message.reply_text("הנה הנתונים שלך!")
-            await update.message.reply_document(document=file, filename="bot_usage.xlsx")
-        os.remove(filename)
-    except Exception as e:
-        logger.error(f"שגיאה בשליחת הקובץ: {e}")
-        await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
-
-async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.message.from_user.id
-    chat = await context.bot.get_chat(user_id)
-    username = chat.username
-    logger.debug(f"User {user_id} sent /latest, username: {username}")
-    log_interaction(user_id, "/latest", username)
-    await update.message.reply_text("מחפש מבזקים...")
-    ynet_news = scrape_ynet()
-    arutz7_news = scrape_arutz7()
-    walla_news = scrape_walla()
-
-    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
-    message = "📰 **המבזקים האחרונים** 📰\n\n"
-    for site, articles in news.items():
-        message += f"**{site}:**\n"
-        if articles:
-            for idx, article in enumerate(articles[:3], 1):
-                if 'time' in article:
-                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-                else:
-                    message += f"{idx}. [{article['title']}]({article['link']})\n"
-        else:
-            message += "לא ניתן לטעון כרגע\n"
-        message += "\n"
-    
-    keyboard = [
-        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
-        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
-        [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
+        yield
+    finally:
+        signal.alarm(0)
 
 def scrape_ynet():
     try:
@@ -214,74 +136,140 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        proxy = get_working_proxy(NEWS_SITES['kan11'])
-        if not proxy:
-            return [], "לא נמצא פרוקסי חינמי שעובד"
-        
-        logger.debug("Starting Kan 11 scrape with free proxy")
-        response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=proxy, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        items = soup.select('div.accordion-item.f-news__item')[:3]
-        
-        if not items:
-            logger.warning("לא נמצאו מבזקים ב-URL הראשי של כאן 11, מנסה URL חלופי")
-            response = requests.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, proxies=proxy, timeout=15)
+        with timeout(60):  # מגביל ל-60 שניות
+            logger.debug("Starting Kan 11 scrape via Heroku proxy")
+            proxy_url = f"{HEROKU_PROXY_URL}?url={NEWS_SITES['kan11']}"
+            response = requests.get(proxy_url, headers=BASE_HEADERS, timeout=15)
+            response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             items = soup.select('div.accordion-item.f-news__item')[:3]
             if not items:
-                logger.debug(f"Kan 11 full HTML (alt): {response.text[:500]}")
-                return [], "לא נמצאו מבזקים ב-HTML"
-        
-        results = []
-        for item in items:
-            time_tag = item.select_one('div.time')
-            title_tag = item.select_one('div.d-flex.flex-grow-1 span')
-            link_tag = item.select_one('a.card-link')
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else None
-            if link and not link.startswith('http'):
-                link = f"https://www.kan.org.il{link}"
-            results.append({'time': article_time, 'title': title, 'link': link})
-        
-        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
-        return results, None
-    
+                logger.warning("לא נמצאו מבזקים ב-URL הראשי, מנסה URL חלופי")
+                proxy_url = f"{HEROKU_PROXY_URL}?url={NEWS_SITES['kan11_alt']}"
+                response = requests.get(proxy_url, headers=BASE_HEADERS, timeout=15)
+                soup = BeautifulSoup(response.text, 'html.parser')
+                items = soup.select('div.accordion-item.f-news__item')[:3]
+                if not items:
+                    logger.debug(f"Kan 11 HTML: {response.text[:500]}")
+                    return [], "לא נמצאו מבזקים ב-HTML"
+            results = []
+            for item in items:
+                time_tag = item.select_one('div.time')
+                title_tag = item.select_one('div.d-flex.flex-grow-1 span')
+                link_tag = item.select_one('a.card-link')
+                article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+                title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+                link = link_tag['href'] if link_tag else None
+                if link and not link.startswith('http'):
+                    link = f"https://www.kan.org.il{link}"
+                results.append({'time': article_time, 'title': title, 'link': link})
+            logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
+            return results, None
+    except TimeoutError:
+        logger.error("סקרייפינג כאן 11 נכשל: לקח יותר מ-60 שניות")
+        return [], "לקח יותר מדי זמן"
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
 def scrape_channel14():
     try:
-        proxy = get_working_proxy(NEWS_SITES['channel14'])
-        if not proxy:
-            return [], "לא נמצא פרוקסי חינמי שעובד"
-        
-        logger.debug("Starting Channel 14 scrape with free proxy")
-        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=proxy, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'xml')
-        items = soup.select('item')[:3]
-        
-        if not items:
-            logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
-            logger.debug(f"Channel 14 full RSS: {response.text[:500]}")
-            return [], "לא נמצאו מבזקים ב-RSS"
-        
-        results = []
-        for item in items:
-            title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
-            link = item.find('link').get_text(strip=True) if item.find('link') else None
-            pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
-            results.append({'time': pub_date, 'title': title, 'link': link})
-        
-        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
-        return results, None
-    
+        with timeout(60):  # מגביל ל-60 שניות
+            logger.debug("Starting Channel 14 scrape via Heroku proxy")
+            proxy_url = f"{HEROKU_PROXY_URL}?url={NEWS_SITES['channel14']}"
+            response = requests.get(proxy_url, headers=BASE_HEADERS, timeout=15)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'xml')
+            items = soup.select('item')[:3]
+            if not items:
+                logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
+                logger.debug(f"Channel 14 RSS: {response.text[:500]}")
+                return [], "לא נמצאו מבזקים ב-RSS"
+            results = []
+            for item in items:
+                title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
+                link = item.find('link').get_text(strip=True) if item.find('link') else None
+                pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
+                results.append({'time': pub_date, 'title': title, 'link': link})
+            logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
+            return results, None
+    except TimeoutError:
+        logger.error("סקרייפינג ערוץ 14 נכשל: לקח יותר מ-60 שניות")
+        return [], "לקח יותר מדי זמן"
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} sent /start, username: {username}")
+    log_interaction(user_id, "/start", username)
+    await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
+
+async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} sent /download, username: {username}")
+    log_interaction(user_id, "/download", username)
+    SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
+
+    if not SECRET_PASSWORD:
+        await update.message.reply_text("שגיאה: הסיסמה לא מוגדרת בשרת!")
+        return
+    
+    if not context.args or context.args[0] != SECRET_PASSWORD:
+        await update.message.reply_text("סיסמה שגויה! אין גישה.")
+        return
+    
+    try:
+        filename = save_to_excel()
+        if not os.path.exists(filename):
+            await update.message.reply_text("שגיאה: הקובץ לא נוצר!")
+            return
+        with open(filename, 'rb') as file:
+            await update.message.reply_text("הנה הנתונים שלך!")
+            await update.message.reply_document(document=file, filename="bot_usage.xlsx")
+        os.remove(filename)
+    except Exception as e:
+        logger.error(f"שגיאה בשליחת הקובץ: {e}")
+        await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
+
+async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} sent /latest, username: {username}")
+    log_interaction(user_id, "/latest", username)
+    await update.message.reply_text("מחפש מבזקים...")
+    ynet_news = scrape_ynet()
+    arutz7_news = scrape_arutz7()
+    walla_news = scrape_walla()
+
+    news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
+    message = "📰 **המבזקים האחרונים** 📰\n\n"
+    for site, articles in news.items():
+        message += f"**{site}:**\n"
+        if articles:
+            for idx, article in enumerate(articles[:3], 1):
+                if 'time' in article:
+                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                else:
+                    message += f"{idx}. [{article['title']}]({article['link']})\n"
+        else:
+            message += "לא ניתן לטעון כרגע\n"
+        message += "\n"
+    
+    keyboard = [
+        [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
+        [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
+        [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -352,7 +340,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... זה עלול לקחת זמן עד שימצא פרוקסי שעובד.")
+    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
     channel14_news, channel14_error = scrape_channel14()
@@ -430,7 +418,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with free proxies...")
+    logger.info("Initializing bot with Heroku proxy...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
