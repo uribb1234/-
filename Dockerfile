@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
     libnss3 \
     libgconf-2-4 \
     libfontconfig1 \
-    xvfb  # הוספת xvfb כדי לתמוך בריצה של דפדפן לא מוסתר
+    xvfb
 
 # התקנת Playwright ותלויות נוספות
 RUN pip install playwright
@@ -33,5 +33,8 @@ RUN pip install -r requirements.txt
 # העתקת הקוד לשרת
 COPY . .
 
-# הגדרת הפקודה הראשית להרצת הבוט עם xvfb
-CMD ["xvfb-run", "python", "newsflashil.py"]
+# הגדרת משתנה סביבה לפורט
+ENV PORT=8080
+
+# הרצת הבוט עם xvfb ושרת Flask כתהליך ראשי
+CMD ["xvfb-run", "--auto-servernum", "python", "newsflashil.py"]
