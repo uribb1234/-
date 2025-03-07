@@ -3,6 +3,7 @@ import requests
 import os
 
 app = Flask(__name__)
+session = requests.Session()  # שמור עוגיות בין בקשות
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -16,11 +17,11 @@ def proxy(path):
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': target_url,  # שימוש ב-URL היעד כ-Referer
-            'Connection': 'keep-alive'
+            'Referer': target_url,
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'  # דימוי דפדפן
         }
-        response = requests.get(target_url, headers=headers, timeout=10, allow_redirects=True)
-        # החזר את התוכן עם ה-headers המקוריים של התגובה
+        response = session.get(target_url, headers=headers, timeout=10, allow_redirects=True)
         return Response(response.content, status=response.status_code, headers=dict(response.headers))
     except Exception as e:
         return f"Proxy Error: {str(e)}", 500
