@@ -20,13 +20,14 @@ RUN apt-get update && apt-get install -y \
     libgconf-2-4 \
     libfontconfig1
 
+# התקנת Playwright ותלויות נוספות
+RUN pip install playwright
+RUN playwright install-deps  # התקנת התלויות הדרושות ל-Playwright
+RUN playwright install  # התקנת הדפדפנים (Chromium, Firefox, WebKit)
+
 # התקנת התלויות של Python
 COPY requirements.txt .
 RUN pip install -r requirements.txt
-
-# התקנת Playwright ו-Chromium
-RUN pip install playwright
-RUN playwright install
 
 # העתקת הקוד לשרת
 COPY . .
