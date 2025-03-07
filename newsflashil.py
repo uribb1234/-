@@ -1,6 +1,6 @@
 import os
-import subprocess
 import time
+import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -11,9 +11,7 @@ import asyncio
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
-from stem import Signal
-from stem.control import Controller
-import requests  # נשאר עבור Ynet, Walla וכו'
+import random
 
 # הגדרת לוגינג
 logging.basicConfig(
@@ -52,16 +50,27 @@ BASE_HEADERS = {
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
 
-# פונקציה לרענון IP של Tor
-def renew_tor_ip():
-    try:
-        time.sleep(10)  # המתנה של 10 שניות כדי לתת ל-Tor לעלות
-        with Controller.from_port(port=9051) as controller:
-            controller.authenticate()
-            controller.signal(Signal.NEWNYM)
-            logger.info("Tor IP renewed successfully")
-    except Exception as e:
-        logger.error(f"Failed to renew Tor IP: {str(e)}")
+# רשימת הפרוקסי שסיפקת
+FREE_PROXIES = [
+    {'http': 'http://62.210.222.58:3128', 'https': 'http://62.210.222.58:3128'},
+    {'http': 'http://51.195.107.167:80', 'https': 'http://51.195.107.167:80'},
+    {'http': 'http://141.11.103.136:8080', 'https': 'http://141.11.103.136:8080'},
+    {'http': 'http://51.16.179.113:1080', 'https': 'http://51.16.179.113:1080'},
+    {'http': 'http://51.16.199.206:3128', 'https': 'http://51.16.199.206:3128'}
+]
+
+def get_working_proxy(url):
+    for proxy in FREE_PROXIES:
+        try:
+            logger.debug(f"Trying proxy: {proxy}")
+            response = requests.get(url, headers=BASE_HEADERS, proxies=proxy, timeout=5)
+            response.raise_for_status()
+            logger.info(f"Found working proxy: {proxy}")
+            return proxy
+        except Exception as e:
+            logger.debug(f"Proxy failed: {proxy} - {str(e)}")
+    logger.error("No working proxies found")
+    return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -205,31 +214,24 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        renew_tor_ip()  # רענון IP של Tor
-        logger.debug("Starting Kan 11 scrape with curl and Tor")
-        curl_command = [
-            'curl', '--socks5', 'localhost:9050', 
-            '-H', f"User-Agent: {BASE_HEADERS['User-Agent']}",
-            '-H', f"Accept: {BASE_HEADERS['Accept']}",
-            '-H', f"Accept-Language: {BASE_HEADERS['Accept-Language']}",
-            '-H', f"Referer: {BASE_HEADERS['Referer']}",
-            NEWS_SITES['kan11']
-        ]
-        result = subprocess.run(curl_command, capture_output=True, text=True, timeout=15)
-        if result.returncode != 0:
-            logger.warning(f"curl failed for Kan 11 primary URL: {result.stderr}")
-            curl_command[-1] = NEWS_SITES['kan11_alt']
-            result = subprocess.run(curl_command, capture_output=True, text=True, timeout=15)
-            if result.returncode != 0:
-                raise Exception(f"curl failed for Kan 11 alt URL: {result.stderr}")
+        proxy = get_working_proxy(NEWS_SITES['kan11'])
+        if not proxy:
+            return [], "לא נמצא פרוקסי חינמי שעובד"
         
-        soup = BeautifulSoup(result.stdout, 'html.parser')
+        logger.debug("Starting Kan 11 scrape with free proxy")
+        response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=proxy, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
         items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
-            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
-            logger.debug(f"Kan 11 full HTML: {result.stdout[:500]}")
-            return [], "לא נמצאו מבזקים ב-HTML"
+            logger.warning("לא נמצאו מבזקים ב-URL הראשי של כאן 11, מנסה URL חלופי")
+            response = requests.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, proxies=proxy, timeout=15)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            items = soup.select('div.accordion-item.f-news__item')[:3]
+            if not items:
+                logger.debug(f"Kan 11 full HTML (alt): {response.text[:500]}")
+                return [], "לא נמצאו מבזקים ב-HTML"
         
         results = []
         for item in items:
@@ -252,26 +254,19 @@ def scrape_kan11():
 
 def scrape_channel14():
     try:
-        renew_tor_ip()  # רענון IP של Tor
-        logger.debug("Starting Channel 14 scrape with curl and Tor")
-        curl_command = [
-            'curl', '--socks5', 'localhost:9050',
-            '-H', f"User-Agent: {BASE_HEADERS['User-Agent']}",
-            '-H', f"Accept: {BASE_HEADERS['Accept']}",
-            '-H', f"Accept-Language: {BASE_HEADERS['Accept-Language']}",
-            '-H', f"Referer: {BASE_HEADERS['Referer']}",
-            NEWS_SITES['channel14']
-        ]
-        result = subprocess.run(curl_command, capture_output=True, text=True, timeout=15)
-        if result.returncode != 0:
-            raise Exception(f"curl failed with error: {result.stderr}")
+        proxy = get_working_proxy(NEWS_SITES['channel14'])
+        if not proxy:
+            return [], "לא נמצא פרוקסי חינמי שעובד"
         
-        soup = BeautifulSoup(result.stdout, 'xml')
+        logger.debug("Starting Channel 14 scrape with free proxy")
+        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=proxy, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'xml')
         items = soup.select('item')[:3]
         
         if not items:
             logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
-            logger.debug(f"Channel 14 full RSS: {result.stdout[:500]}")
+            logger.debug(f"Channel 14 full RSS: {response.text[:500]}")
             return [], "לא נמצאו מבזקים ב-RSS"
         
         results = []
@@ -357,7 +352,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה דרך Tor עלולה לקחת קצת זמן.")
+    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... זה עלול לקחת זמן עד שימצא פרוקסי שעובד.")
     
     kan11_news, kan11_error = scrape_kan11()
     channel14_news, channel14_error = scrape_channel14()
@@ -435,7 +430,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with Tor and curl...")
+    logger.info("Initializing bot with free proxies...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
