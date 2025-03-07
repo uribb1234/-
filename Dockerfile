@@ -1,8 +1,9 @@
 FROM python:3.9-slim
 
-# התקנת Tor
+# התקנת Tor ו-curl
 RUN apt-get update && apt-get install -y \
     tor \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # העתקת קובץ torrc להגדרות Tor
