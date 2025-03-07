@@ -31,19 +31,28 @@ def proxy(path):
         # המתנה לאתגר Cloudflare Turnstile
         app.logger.info("Waiting for Cloudflare Turnstile to resolve...")
         try:
-            WebDriverWait(driver, 10).until(
-                EC.invisibility_of_element_located((By.CSS_SELECTOR, "iframe[src*='challenges.cloudflare.com']"))
+            # חכה עד שה-iframe של Turnstile נעלם או עד שהתוכן הסופי מופיע
+            WebDriverWait(driver, 20).until(
+                lambda driver: "challenges.cloudflare.com" not in driver.page_source or \
+                               EC.presence_of_element_located((By.TAG_NAME, "rss"))
             )
-            app.logger.info("Turnstile resolved or not present.")
+            app.logger.info("Turnstile resolved or feed loaded.")
         except Exception as e:
-            app.logger.warning(f"Turnstile wait failed: {str(e)}, proceeding anyway...")
+            app.logger.warning(f"Turnstile wait failed: {str(e)}, proceeding with current page...")
 
         # המתנה נוספת לדף הסופי
         sleep(2)
         content = driver.page_source
         app.logger.info("Content fetched, closing driver...")
         driver.quit()
-        return Response(content, mimetype='text/html')
+
+        # בדוק אם קיבלנו את ה-feed (XML)
+        if "<rss" in content:
+            app.logger.info("RSS feed detected.")
+            return Response(content, mimetype='application/xml')
+        else:
+            app.logger.warning("RSS feed not found, returning HTML.")
+            return Response(content, mimetype='text/html')
     except Exception as e:
         app.logger.error(f"Error: {str(e)}")
         return f"Proxy Error: {str(e)}", 500
