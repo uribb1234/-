@@ -1,6 +1,6 @@
 import os
+import subprocess
 import time
-import cloudscraper
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -51,12 +51,6 @@ BASE_HEADERS = {
 
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
-
-# הגדרת proxies של Tor
-TOR_PROXIES = {
-    'http': 'socks5://127.0.0.1:9050',
-    'https': 'socks5://127.0.0.1:9050'
-}
 
 # פונקציה לרענון IP של Tor
 def renew_tor_ip():
@@ -212,21 +206,30 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         renew_tor_ip()  # רענון IP של Tor
-        logger.debug("Starting Kan 11 scrape with cloudscraper and Tor")
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
+        logger.debug("Starting Kan 11 scrape with curl and Tor")
+        curl_command = [
+            'curl', '--socks5', 'localhost:9050', 
+            '-H', f"User-Agent: {BASE_HEADERS['User-Agent']}",
+            '-H', f"Accept: {BASE_HEADERS['Accept']}",
+            '-H', f"Accept-Language: {BASE_HEADERS['Accept-Language']}",
+            '-H', f"Referer: {BASE_HEADERS['Referer']}",
+            NEWS_SITES['kan11']
+        ]
+        result = subprocess.run(curl_command, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            logger.warning(f"curl failed for Kan 11 primary URL: {result.stderr}")
+            curl_command[-1] = NEWS_SITES['kan11_alt']
+            result = subprocess.run(curl_command, capture_output=True, text=True, timeout=15)
+            if result.returncode != 0:
+                raise Exception(f"curl failed for Kan 11 alt URL: {result.stderr}")
+        
+        soup = BeautifulSoup(result.stdout, 'html.parser')
         items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
-            logger.warning("לא נמצאו מבזקים ב-URL הראשי של כאן 11, מנסה URL חלופי")
-            response = scraper.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            items = soup.select('div.accordion-item.f-news__item')[:3]
-            if not items:
-                logger.debug(f"Kan 11 full HTML (alt): {response.text[:500]}")
-                return [], "לא נמצאו מבזקים ב-HTML"
+            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+            logger.debug(f"Kan 11 full HTML: {result.stdout[:500]}")
+            return [], "לא נמצאו מבזקים ב-HTML"
         
         results = []
         for item in items:
@@ -250,16 +253,25 @@ def scrape_kan11():
 def scrape_channel14():
     try:
         renew_tor_ip()  # רענון IP של Tor
-        logger.debug("Starting Channel 14 scrape with cloudscraper and Tor")
-        scraper = cloudscraper.create_scraper()
-        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'xml')
+        logger.debug("Starting Channel 14 scrape with curl and Tor")
+        curl_command = [
+            'curl', '--socks5', 'localhost:9050',
+            '-H', f"User-Agent: {BASE_HEADERS['User-Agent']}",
+            '-H', f"Accept: {BASE_HEADERS['Accept']}",
+            '-H', f"Accept-Language: {BASE_HEADERS['Accept-Language']}",
+            '-H', f"Referer: {BASE_HEADERS['Referer']}",
+            NEWS_SITES['channel14']
+        ]
+        result = subprocess.run(curl_command, capture_output=True, text=True, timeout=15)
+        if result.returncode != 0:
+            raise Exception(f"curl failed with error: {result.stderr}")
+        
+        soup = BeautifulSoup(result.stdout, 'xml')
         items = soup.select('item')[:3]
         
         if not items:
             logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
-            logger.debug(f"Channel 14 full RSS: {response.text[:500]}")
+            logger.debug(f"Channel 14 full RSS: {result.stdout[:500]}")
             return [], "לא נמצאו מבזקים ב-RSS"
         
         results = []
@@ -423,7 +435,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with Tor and cloudscraper...")
+    logger.info("Initializing bot with Tor and curl...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
