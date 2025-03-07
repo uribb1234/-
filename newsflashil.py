@@ -7,24 +7,26 @@ from flask import Flask
 import threading
 import logging
 import asyncio
-import subprocess
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
 from playwright.async_api import async_playwright
 
-# הגדרת לוגינג
+# הגדרת לוגינג - רק ל-stdout כדי שיופיע ב-Render
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.FileHandler('bot.log'), logging.StreamHandler()]
+    handlers=[logging.StreamHandler()]  # הסרת FileHandler לעת עתה
 )
 logger = logging.getLogger(__name__)
 
+# בדיקת TOKEN מוקדם עם לוג
+logger.debug("Checking TELEGRAM_TOKEN...")
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TOKEN:
-    logger.error("שגיאה: הטוקן לא מוגדר!")
+    logger.error("שגיאה: TELEGRAM_TOKEN לא מוגדר! הבוט לא ירוץ.")
     exit(1)
+logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
 
 NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
@@ -186,13 +188,12 @@ def scrape_ynet_tech():
 
 async def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 scrape with Playwright (visible browser via xvfb)")
+        logger.debug("Starting Kan 11 scrape with Playwright")
         async with async_playwright() as p:
-            # שימוש ב-xvfb רק עבור Playwright
-            browser = await p.chromium.launch(headless=False, executable_path='/usr/bin/xvfb-run')
+            browser = await p.chromium.launch(headless=True)  # חזרתי ל-headless כי xvfb גרם לבעיות
             page = await browser.new_page()
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(5)  # ממתין לפתרון הגנות
+            await asyncio.sleep(5)
             content = await page.content()
             logger.debug(f"Kan 11 HTML content: {content[:500]}")
             await browser.close()
@@ -275,7 +276,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for idx, article in enumerate(sport1_news[:3], 1):
             message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
-        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport1_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport5_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
@@ -388,11 +389,16 @@ def home():
     return "Bot is alive!"
 
 def run_bot():
-    logger.debug("Starting bot polling in thread...")
-    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        logger.info("Starting bot polling in thread...")
+        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+        logger.info("Bot polling started successfully")
+    except Exception as e:
+        logger.error(f"Error in bot polling: {str(e)}")
+        raise
 
 if __name__ == "__main__":
-    logger.debug("Initializing bot with Playwright...")
+    logger.info("Initializing bot with Playwright...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
@@ -405,7 +411,7 @@ if __name__ == "__main__":
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
 
-    # הרצת שרת Flask כתהליך ראשי על הפורט של Render
-    port = int(os.environ.get("PORT", 10000))  # ברירת מחדל 10000 לפי Render
-    logger.debug(f"Starting Flask on port {port}")
+    # הרצת שרת Flask כתהליך ראשי
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"Starting Flask on port {port}")
     app.run(host="0.0.0.0", port=port)
