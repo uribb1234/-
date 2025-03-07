@@ -190,9 +190,12 @@ async def scrape_kan11():
         logger.debug("Starting Kan 11 scrape with Playwright")
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            context = await browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+            )
+            page = await context.new_page()
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(5)
+            await asyncio.sleep(5)  # ממתין כדי לוודא שהדף נטען
             content = await page.content()
             logger.debug(f"Kan 11 HTML content: {content[:500]}")
             await browser.close()
