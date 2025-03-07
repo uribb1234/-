@@ -2,11 +2,11 @@ from flask import Flask, request, Response
 import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import undetected_chromedriver as uc
 from time import sleep
+import random
 
 app = Flask(__name__)
 
@@ -17,7 +17,6 @@ def proxy(path):
     if not target_url:
         return "Error: No URL provided", 400
     try:
-        app.logger.info("Starting Chrome driver...")
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--no-sandbox")
@@ -25,36 +24,39 @@ def proxy(path):
         options.add_argument("--disable-gpu")
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         driver = uc.Chrome(options=options)
-        app.logger.info(f"Fetching URL: {target_url}")
+        
+        # טען את הדף
         driver.get(target_url)
 
-        # המתנה לאתגר Cloudflare Turnstile
-        app.logger.info("Waiting for Cloudflare Turnstile to resolve...")
+        # הוסף התנהגות אנושית
         try:
-            # חכה עד שה-iframe של Turnstile נעלם או עד שהתוכן הסופי מופיע
-            WebDriverWait(driver, 20).until(
-                lambda driver: "challenges.cloudflare.com" not in driver.page_source or \
-                               EC.presence_of_element_located((By.TAG_NAME, "rss"))
-            )
-            app.logger.info("Turnstile resolved or feed loaded.")
-        except Exception as e:
-            app.logger.warning(f"Turnstile wait failed: {str(e)}, proceeding with current page...")
+            # תנועת עכבר אקראית
+            actions = ActionChains(driver)
+            width, height = driver.execute_script("return [document.body.scrollWidth, document.body.scrollHeight];")
+            x_move = random.randint(50, min(500, width - 50))
+            y_move = random.randint(50, min(500, height - 50))
+            actions.move_by_offset(x_move, y_move).perform()
+            sleep(random.uniform(0.5, 1.5))  # המתנה קצרה כמו משתמש אמיתי
 
-        # המתנה נוספת לדף הסופי
-        sleep(2)
+            # גלילה קלה
+            driver.execute_script("window.scrollBy(0, 200);")
+            sleep(random.uniform(0.5, 1.5))
+
+            # המתנה קצרה נוספת לדימוי פעילות
+            sleep(2)
+        except Exception as e:
+            pass  # המשך גם אם הפעולות נכשלות
+
+        # קבל את התוכן הסופי
         content = driver.page_source
-        app.logger.info("Content fetched, closing driver...")
         driver.quit()
 
         # בדוק אם קיבלנו את ה-feed (XML)
         if "<rss" in content:
-            app.logger.info("RSS feed detected.")
             return Response(content, mimetype='application/xml')
         else:
-            app.logger.warning("RSS feed not found, returning HTML.")
             return Response(content, mimetype='text/html')
     except Exception as e:
-        app.logger.error(f"Error: {str(e)}")
         return f"Proxy Error: {str(e)}", 500
 
 if __name__ == '__main__':
