@@ -10,7 +10,6 @@ import asyncio
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
-from playwright.async_api import async_playwright
 from stem import Signal
 from stem.control import Controller
 
@@ -40,12 +39,18 @@ NEWS_SITES = {
 
 BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Referer': 'https://www.google.com/'
 }
 
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
+
+# הגדרת proxies של Tor
+TOR_PROXIES = {
+    'http': 'socks5://127.0.0.1:9050',
+    'https': 'socks5://127.0.0.1:9050'
+}
 
 # פונקציה לרענון IP של Tor
 def renew_tor_ip():
@@ -197,114 +202,66 @@ def scrape_ynet_tech():
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
-async def scrape_kan11():
-    max_retries = 2  # נסה עד 2 פעמים
-    for attempt in range(max_retries):
-        try:
-            logger.debug(f"Starting Kan 11 scrape with Tor (attempt {attempt + 1})")
-            renew_tor_ip()  # רענון IP של Tor לפני הבקשה
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    proxy={"server": "socks5://127.0.0.1:9050"}  # שימוש ב-Tor כ-proxy
-                )
-                context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-                    extra_http_headers={
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                        "Referer": "https://www.kan.org.il/",
-                        "Accept-Language": "en-US,en;q=0.5"
-                    }
-                )
-                page = await context.new_page()
-                await page.goto(NEWS_SITES['kan11'], wait_until="networkidle", timeout=60000)
-                content = await page.content()
-                logger.debug(f"Kan 11 HTML content: {content[:500]}")
-                await browser.close()
-            
-            soup = BeautifulSoup(content, 'html.parser')
-            items = soup.select('div.accordion-item.f-news__item')[:3]
-            
-            if not items:
-                logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
-                logger.debug(f"Kan 11 full HTML: {content}")
-                return [], "לא נמצאו מבזקים ב-HTML"
-            
-            results = []
-            for item in items:
-                time_tag = item.select_one('div.time')
-                title_tag = item.select_one('div.d-flex.flex-grow-1 span')
-                link_tag = item.select_one('a.card-link')
-                article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-                title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-                link = link_tag['href'] if link_tag else None
-                if link and not link.startswith('http'):
-                    link = f"https://www.kan.org.il{link}"
-                results.append({'time': article_time, 'title': title, 'link': link})
-            
-            logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
-            return results, None
+def scrape_kan11():
+    try:
+        renew_tor_ip()  # רענון IP של Tor
+        logger.debug("Starting Kan 11 scrape with Tor and requests")
+        response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        items = soup.select('div.accordion-item.f-news__item')[:3]
         
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout בנסיון {attempt + 1} עבור כאן 11")
-            if attempt == max_retries - 1:
-                return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
-            await asyncio.sleep(2)
-        except Exception as e:
-            logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
-            return [], f"שגיאה בסקריפינג: {str(e)}"
+        if not items:
+            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+            logger.debug(f"Kan 11 full HTML: {response.text[:500]}")
+            return [], "לא נמצאו מבזקים ב-HTML"
+        
+        results = []
+        for item in items:
+            time_tag = item.select_one('div.time')
+            title_tag = item.select_one('div.d-flex.flex-grow-1 span')
+            link_tag = item.select_one('a.card-link')
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else None
+            if link and not link.startswith('http'):
+                link = f"https://www.kan.org.il{link}"
+            results.append({'time': article_time, 'title': title, 'link': link})
+        
+        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
+        return results, None
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
+        return [], f"שגיאה בסקריפינג: {str(e)}"
 
-async def scrape_channel14():
-    max_retries = 2  # נסה עד 2 פעמים
-    for attempt in range(max_retries):
-        try:
-            logger.debug(f"Starting Channel 14 scrape with Tor (attempt {attempt + 1})")
-            renew_tor_ip()  # רענון IP של Tor לפני הבקשה
-            async with async_playwright() as p:
-                browser = await p.chromium.launch(
-                    headless=True,
-                    proxy={"server": "socks5://127.0.0.1:9050"}  # שימוש ב-Tor כ-proxy
-                )
-                context = await browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-                    extra_http_headers={
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                        "Referer": "https://www.now14.co.il/",
-                        "Accept-Language": "en-US,en;q=0.5"
-                    }
-                )
-                page = await context.new_page()
-                await page.goto(NEWS_SITES['channel14'], wait_until="networkidle", timeout=60000)
-                content = await page.content()
-                logger.debug(f"Channel 14 RSS content: {content[:500]}")
-                await browser.close()
-            
-            soup = BeautifulSoup(content, 'xml')
-            items = soup.select('item')[:3]
-            
-            if not items:
-                logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
-                logger.debug(f"Channel 14 full RSS: {content}")
-                return [], "לא נמצאו מבזקים ב-RSS"
-            
-            results = []
-            for item in items:
-                title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
-                link = item.find('link').get_text(strip=True) if item.find('link') else None
-                pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
-                results.append({'time': pub_date, 'title': title, 'link': link})
-            
-            logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
-            return results, None
+def scrape_channel14():
+    try:
+        renew_tor_ip()  # רענון IP של Tor
+        logger.debug("Starting Channel 14 scrape with Tor and requests")
+        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'xml')
+        items = soup.select('item')[:3]
         
-        except asyncio.TimeoutError:
-            logger.error(f"Timeout בנסיון {attempt + 1} עבור ערוץ 14")
-            if attempt == max_retries - 1:
-                return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
-            await asyncio.sleep(2)
-        except Exception as e:
-            logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
-            return [], f"שגיאה בסקריפינג: {str(e)}"
+        if not items:
+            logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
+            logger.debug(f"Channel 14 full RSS: {response.text[:500]}")
+            return [], "לא נמצאו מבזקים ב-RSS"
+        
+        results = []
+        for item in items:
+            title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
+            link = item.find('link').get_text(strip=True) if item.find('link') else None
+            pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
+            results.append({'time': pub_date, 'title': title, 'link': link})
+        
+        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
+        return results, None
+    
+    except requests.exceptions.RequestException as e:
+        logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
+        return [], f"שגיאה בסקריפינג: {str(e)}"
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -375,10 +332,10 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה דרך Tor לוקחת קצת זמן, חכו בסבלנות.")
+    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה דרך Tor עלולה לקחת קצת זמן.")
     
-    kan11_news, kan11_error = await scrape_kan11()
-    channel14_news, channel14_error = await scrape_channel14()
+    kan11_news, kan11_error = scrape_kan11()
+    channel14_news, channel14_error = scrape_channel14()
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
@@ -453,7 +410,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with Playwright and Tor...")
+    logger.info("Initializing bot with Tor...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
