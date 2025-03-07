@@ -1,6 +1,6 @@
 FROM python:3.9-slim
 
-# התקנת כל התלויות הנדרשות ל-Chromium של Playwright
+# התקנת כל התלויות הנדרשות לדפדפנים ול-xvfb
 RUN apt-get update && apt-get install -y \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -18,12 +18,13 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libnss3 \
     libgconf-2-4 \
-    libfontconfig1
+    libfontconfig1 \
+    xvfb  # הוספת xvfb כדי לתמוך בריצה של דפדפן לא מוסתר
 
 # התקנת Playwright ותלויות נוספות
 RUN pip install playwright
-RUN playwright install-deps  # התקנת התלויות הדרושות ל-Playwright
-RUN playwright install  # התקנת הדפדפנים (Chromium, Firefox, WebKit)
+RUN playwright install-deps
+RUN playwright install
 
 # התקנת התלויות של Python
 COPY requirements.txt .
@@ -32,5 +33,5 @@ RUN pip install -r requirements.txt
 # העתקת הקוד לשרת
 COPY . .
 
-# פקודת הרצה
-CMD ["python", "newsflashil.py"]
+# הגדרת הפקודה הראשית להרצת הבוט עם xvfb
+CMD ["xvfb-run", "python", "newsflashil.py"]
