@@ -6,6 +6,5 @@ feedparser
 pandas
 openpyxl
 cloudscraper
-selenium
-undetected-chromedriver
-distutils
+selenium==4.11.2
+undetected-chromedriver==3.5.5
