@@ -1,6 +1,6 @@
 import os
-import requests
 import time
+import cloudscraper
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -13,6 +13,7 @@ from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
 from stem import Signal
 from stem.control import Controller
+import requests  # נשאר עבור Ynet, Walla וכו'
 
 # הגדרת לוגינג
 logging.basicConfig(
@@ -35,7 +36,7 @@ NEWS_SITES = {
     'walla': 'https://news.walla.co.il/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579',
-    'kan11_alt': 'https://www.kan.org.il/news-flash',  # URL חלופי לכאן 11
+    'kan11_alt': 'https://www.kan.org.il/news-flash',
     'channel14': 'https://www.now14.co.il/feed/'
 }
 
@@ -43,7 +44,7 @@ BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9,he;q=0.8',
-    'Referer': 'https://www.kan.org.il/',
+    'Referer': 'https://www.google.com/',
     'Connection': 'keep-alive',
     'Upgrade-Insecure-Requests': '1'
 }
@@ -57,7 +58,7 @@ TOR_PROXIES = {
     'https': 'socks5://127.0.0.1:9050'
 }
 
-# פונקציה לרענון IP של Tor עם המתנה ארוכה יותר
+# פונקציה לרענון IP של Tor
 def renew_tor_ip():
     try:
         time.sleep(10)  # המתנה של 10 שניות כדי לתת ל-Tor לעלות
@@ -211,15 +212,16 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         renew_tor_ip()  # רענון IP של Tor
-        logger.debug("Starting Kan 11 scrape with Tor and requests")
-        response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
+        logger.debug("Starting Kan 11 scrape with cloudscraper and Tor")
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
             logger.warning("לא נמצאו מבזקים ב-URL הראשי של כאן 11, מנסה URL חלופי")
-            response = requests.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
+            response = scraper.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
             soup = BeautifulSoup(response.text, 'html.parser')
             items = soup.select('div.accordion-item.f-news__item')[:3]
             if not items:
@@ -241,15 +243,16 @@ def scrape_kan11():
         logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
         return results, None
     
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
 def scrape_channel14():
     try:
         renew_tor_ip()  # רענון IP של Tor
-        logger.debug("Starting Channel 14 scrape with Tor and requests")
-        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
+        logger.debug("Starting Channel 14 scrape with cloudscraper and Tor")
+        scraper = cloudscraper.create_scraper()
+        response = scraper.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'xml')
         items = soup.select('item')[:3]
@@ -269,7 +272,7 @@ def scrape_channel14():
         logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
         return results, None
     
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
@@ -420,7 +423,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with Tor...")
+    logger.info("Initializing bot with Tor and cloudscraper...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
