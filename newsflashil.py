@@ -187,9 +187,10 @@ def scrape_ynet_tech():
 
 async def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 scrape with Playwright")
+        logger.debug("Starting Kan 11 scrape with Playwright and proxy")
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            # שימוש ב-proxy שנתת: 54.36.176.100 (נניח שפורט ברירת מחדל 80, כי לא ציינת פורט)
+            browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://54.36.176.100:80'])
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
                 extra_http_headers={
@@ -199,12 +200,11 @@ async def scrape_kan11():
                 }
             )
             page = await context.new_page()
+            # הדפסת headers של הבקשה לדיבאג
+            await page.route("**/*", lambda route: (logger.debug(f"Request headers: {route.request.headers}"), route.continue_()))
+            
+            # ניסיון לגשת לדף עם timeout של 60 שניות
             await page.goto(NEWS_SITES['kan11'], wait_until="networkidle", timeout=60000)
-            # ממתין עד שדף ה-Cloudflare ייעלם או עד שתוכן אמיתי יופיע
-            await page.wait_for_function(
-                "document.querySelector('div.cf-error-details') === null || document.querySelector('div.accordion-item.f-news__item') !== null",
-                timeout=5000  # 5 שניות בלבד
-            )
             content = await page.content()
             logger.debug(f"Kan 11 HTML content: {content[:500]}")
             await browser.close()
@@ -231,9 +231,13 @@ async def scrape_kan11():
         
         logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
         return results, None
+    
+    except asyncio.TimeoutError:
+        logger.error("השאיבה נכשלה: Timeout עם ה-proxy")
+        return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
-        return [], f"שגיאה לא ידועה: {str(e)}"
+        return [], f"שגיאה בסקריפינג: {str(e)}"
 
 async def scrape_channel14():
     try:
