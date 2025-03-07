@@ -2,6 +2,9 @@ from flask import Flask, request, Response
 import os
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 import undetected_chromedriver as uc
 from time import sleep
 
@@ -24,7 +27,19 @@ def proxy(path):
         driver = uc.Chrome(options=options)
         app.logger.info(f"Fetching URL: {target_url}")
         driver.get(target_url)
-        sleep(5)  # חכה לאתגר Cloudflare
+
+        # המתנה לאתגר Cloudflare Turnstile
+        app.logger.info("Waiting for Cloudflare Turnstile to resolve...")
+        try:
+            WebDriverWait(driver, 10).until(
+                EC.invisibility_of_element_located((By.CSS_SELECTOR, "iframe[src*='challenges.cloudflare.com']"))
+            )
+            app.logger.info("Turnstile resolved or not present.")
+        except Exception as e:
+            app.logger.warning(f"Turnstile wait failed: {str(e)}, proceeding anyway...")
+
+        # המתנה נוספת לדף הסופי
+        sleep(2)
         content = driver.page_source
         app.logger.info("Content fetched, closing driver...")
         driver.quit()
