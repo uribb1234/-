@@ -1,13 +1,9 @@
-pandas
-cloudscraper
-requests
+requests[socks]
 beautifulsoup4
+telegram
 python-telegram-bot
 flask
-curl-cffi
 feedparser
-playwright
-brotli
+pandas
 openpyxl
-aiohttp
 stem
