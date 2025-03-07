@@ -6,3 +6,5 @@ feedparser
 pandas
 openpyxl
 cloudscraper
+selenium
+undetected-chromedriver
