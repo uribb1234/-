@@ -35,13 +35,17 @@ NEWS_SITES = {
     'walla': 'https://news.walla.co.il/',
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579',
+    'kan11_alt': 'https://www.kan.org.il/news-flash',  # URL חלופי לכאן 11
     'channel14': 'https://www.now14.co.il/feed/'
 }
 
 BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-    'Referer': 'https://www.google.com/'
+    'Accept-Language': 'en-US,en;q=0.9,he;q=0.8',
+    'Referer': 'https://www.kan.org.il/',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
 }
 
 app = Flask(__name__)
@@ -53,12 +57,12 @@ TOR_PROXIES = {
     'https': 'socks5://127.0.0.1:9050'
 }
 
-# פונקציה לרענון IP של Tor עם המתנה
+# פונקציה לרענון IP של Tor עם המתנה ארוכה יותר
 def renew_tor_ip():
     try:
-        time.sleep(5)  # המתנה של 5 שניות כדי לתת ל-Tor לעלות
+        time.sleep(10)  # המתנה של 10 שניות כדי לתת ל-Tor לעלות
         with Controller.from_port(port=9051) as controller:
-            controller.authenticate()  # אם יש סיסמה, תצטרך להוסיף אותה כאן
+            controller.authenticate()
             controller.signal(Signal.NEWNYM)
             logger.info("Tor IP renewed successfully")
     except Exception as e:
@@ -208,15 +212,19 @@ def scrape_kan11():
     try:
         renew_tor_ip()  # רענון IP של Tor
         logger.debug("Starting Kan 11 scrape with Tor and requests")
-        response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=10)
+        response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'html.parser')
         items = soup.select('div.accordion-item.f-news__item')[:3]
         
         if not items:
-            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
-            logger.debug(f"Kan 11 full HTML: {response.text[:500]}")
-            return [], "לא נמצאו מבזקים ב-HTML"
+            logger.warning("לא נמצאו מבזקים ב-URL הראשי של כאן 11, מנסה URL חלופי")
+            response = requests.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            items = soup.select('div.accordion-item.f-news__item')[:3]
+            if not items:
+                logger.debug(f"Kan 11 full HTML (alt): {response.text[:500]}")
+                return [], "לא נמצאו מבזקים ב-HTML"
         
         results = []
         for item in items:
@@ -241,7 +249,7 @@ def scrape_channel14():
     try:
         renew_tor_ip()  # רענון IP של Tor
         logger.debug("Starting Channel 14 scrape with Tor and requests")
-        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=10)
+        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, proxies=TOR_PROXIES, timeout=15)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, 'xml')
         items = soup.select('item')[:3]
