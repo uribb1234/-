@@ -190,37 +190,52 @@ async def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 scrape with Playwright")
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
+            # פותח דפדפן במצב לא מוסתר
+            browser = await p.chromium.launch(headless=False)  # שינוי למצב לא מוסתר
+            context = await browser.new_context()
+            page = await context.new_page()
+
+            # גישה לדף כאן 11
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(5)  # ממתין לפתרון Cloudflare
+            
+            # ממתין לטעינה מלאה (ניתן להתאים את הזמן לפי הצורך)
+            await asyncio.sleep(5)
+
+            # לוג - תוכן HTML לניתוח
             content = await page.content()
             logger.debug(f"Kan 11 HTML content: {content[:500]}")  # לוג של ה-HTML הראשוני לבדיקה
+            
+            # עיבוד HTML עם BeautifulSoup
+            soup = BeautifulSoup(content, 'html.parser')
+            items = soup.select('div.accordion-item.f-news__item')[:3]
+            
+            if not items:
+                logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+                logger.debug(f"Kan 11 full HTML: {content}")  # לוג מלא של ה-HTML אם אין מבזקים
+                return [], "לא נמצאו מבזקים ב-HTML"
+
+            results = []
+            for item in items:
+                time_tag = item.select_one('div.time')
+                title_tag = item.select_one('div.d-flex.flex-grow-1 span')
+                link_tag = item.select_one('a.card-link')
+                
+                article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+                title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+                link = link_tag['href'] if link_tag else None
+                
+                # וידוא שהלינק תקין
+                if link and not link.startswith('http'):
+                    link = f"https://www.kan.org.il{link}"
+                
+                results.append({'time': article_time, 'title': title, 'link': link})
+                logger.debug(f"Kan 11 article: time='{article_time}', title='{title}', link='{link}'")
+            
+            # סגירת הדפדפן
             await browser.close()
-        
-        soup = BeautifulSoup(content, 'html.parser')
-        items = soup.select('div.accordion-item.f-news__item')[:3]
-        
-        if not items:
-            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
-            logger.debug(f"Kan 11 full HTML: {content}")  # לוג מלא של ה-HTML אם אין מבזקים
-            return [], "לא נמצאו מבזקים ב-HTML"
-        
-        results = []
-        for item in items:
-            time_tag = item.select_one('div.time')
-            title_tag = item.select_one('div.d-flex.flex-grow-1 span')
-            link_tag = item.select_one('a.card-link')
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else None
-            if link and not link.startswith('http'):
-                link = f"https://www.kan.org.il{link}"
-            results.append({'time': article_time, 'title': title, 'link': link})
-            logger.debug(f"Kan 11 article: time='{article_time}', title='{title}', link='{link}'")
-        
-        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
-        return results, None
+
+            logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
+            return results, None
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
