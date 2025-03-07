@@ -1,5 +1,6 @@
 import os
 import requests
+import time
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -52,9 +53,10 @@ TOR_PROXIES = {
     'https': 'socks5://127.0.0.1:9050'
 }
 
-# פונקציה לרענון IP של Tor
+# פונקציה לרענון IP של Tor עם המתנה
 def renew_tor_ip():
     try:
+        time.sleep(5)  # המתנה של 5 שניות כדי לתת ל-Tor לעלות
         with Controller.from_port(port=9051) as controller:
             controller.authenticate()  # אם יש סיסמה, תצטרך להוסיף אותה כאן
             controller.signal(Signal.NEWNYM)
