@@ -387,18 +387,10 @@ def home():
     logger.debug("Flask server accessed")
     return "Bot is alive!"
 
-def run_bot():
-    logger.info("Starting bot polling in thread...")
-    loop = asyncio.new_event_loop()  # יצירת event loop חדש ל-thread
-    asyncio.set_event_loop(loop)     # הגדרת ה-loop כפעיל ב-thread הזה
-    try:
-        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
-        logger.info("Bot polling started successfully")
-    except Exception as e:
-        logger.error(f"Error in bot polling: {str(e)}")
-        raise
-    finally:
-        loop.close()
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    logger.info(f"Starting Flask on port {port}")
+    app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     logger.info("Initializing bot with Playwright...")
@@ -410,11 +402,11 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הרצת הבוט ב-thread נפרד
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
+    # הרצת Flask ב-thread נפרד
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
 
-    # הרצת שרת Flask כתהליך ראשי
-    port = int(os.environ.get("PORT", 10000))
-    logger.info(f"Starting Flask on port {port}")
-    app.run(host="0.0.0.0", port=port)
+    # הרצת הבוט כתהליך ראשי
+    logger.info("Starting bot polling in main thread...")
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Bot polling started successfully")
