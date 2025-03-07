@@ -1,12 +1,7 @@
 from flask import Flask, request, Response
 import os
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
-import undetected_chromedriver as uc
+import undetected_chromedriver.v2 as uc
 from time import sleep
-import random
 
 app = Flask(__name__)
 
@@ -17,37 +12,23 @@ def proxy(path):
     if not target_url:
         return "Error: No URL provided", 400
     try:
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
+        # הגדרת אפשרויות לדפדפן
+        options = uc.ChromeOptions()
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--start-maximized')
         options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+
+        # אתחול הדפדפן
         driver = uc.Chrome(options=options)
         
-        # טען את הדף
+        # גישה ל-URL
         driver.get(target_url)
+        driver.implicitly_wait(10)  # המתנה של 10 שניות לטעינה
 
-        # הוסף התנהגות אנושית
-        try:
-            # תנועת עכבר אקראית
-            actions = ActionChains(driver)
-            width, height = driver.execute_script("return [document.body.scrollWidth, document.body.scrollHeight];")
-            x_move = random.randint(50, min(500, width - 50))
-            y_move = random.randint(50, min(500, height - 50))
-            actions.move_by_offset(x_move, y_move).perform()
-            sleep(random.uniform(0.5, 1.5))  # המתנה קצרה כמו משתמש אמיתי
-
-            # גלילה קלה
-            driver.execute_script("window.scrollBy(0, 200);")
-            sleep(random.uniform(0.5, 1.5))
-
-            # המתנה קצרה נוספת לדימוי פעילות
-            sleep(2)
-        except Exception as e:
-            pass  # המשך גם אם הפעולות נכשלות
-
-        # קבל את התוכן הסופי
+        # קבל את התוכן
         content = driver.page_source
         driver.quit()
 
