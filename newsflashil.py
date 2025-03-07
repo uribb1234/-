@@ -11,6 +11,8 @@ from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
 from playwright.async_api import async_playwright
+from stem import Signal
+from stem.control import Controller
 
 # הגדרת לוגינג
 logging.basicConfig(
@@ -44,6 +46,16 @@ BASE_HEADERS = {
 
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
+
+# פונקציה לרענון IP של Tor
+def renew_tor_ip():
+    try:
+        with Controller.from_port(port=9051) as controller:
+            controller.authenticate()  # אם יש סיסמה, תצטרך להוסיף אותה כאן
+            controller.signal(Signal.NEWNYM)
+            logger.info("Tor IP renewed successfully")
+    except Exception as e:
+        logger.error(f"Failed to renew Tor IP: {str(e)}")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -189,9 +201,13 @@ async def scrape_kan11():
     max_retries = 2  # נסה עד 2 פעמים
     for attempt in range(max_retries):
         try:
-            logger.debug(f"Starting Kan 11 scrape with Playwright and proxy (attempt {attempt + 1})")
+            logger.debug(f"Starting Kan 11 scrape with Tor (attempt {attempt + 1})")
+            renew_tor_ip()  # רענון IP של Tor לפני הבקשה
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://51.16.199.206:3128'])
+                browser = await p.chromium.launch(
+                    headless=True,
+                    proxy={"server": "socks5://127.0.0.1:9050"}  # שימוש ב-Tor כ-proxy
+                )
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
                     extra_http_headers={
@@ -233,7 +249,7 @@ async def scrape_kan11():
             logger.error(f"Timeout בנסיון {attempt + 1} עבור כאן 11")
             if attempt == max_retries - 1:
                 return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
-            await asyncio.sleep(2)  # המתנה קצרה לפני נסיון חוזר
+            await asyncio.sleep(2)
         except Exception as e:
             logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
             return [], f"שגיאה בסקריפינג: {str(e)}"
@@ -242,9 +258,13 @@ async def scrape_channel14():
     max_retries = 2  # נסה עד 2 פעמים
     for attempt in range(max_retries):
         try:
-            logger.debug(f"Starting Channel 14 scrape with Playwright and proxy (attempt {attempt + 1})")
+            logger.debug(f"Starting Channel 14 scrape with Tor (attempt {attempt + 1})")
+            renew_tor_ip()  # רענון IP של Tor לפני הבקשה
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://51.16.199.206:3128'])
+                browser = await p.chromium.launch(
+                    headless=True,
+                    proxy={"server": "socks5://127.0.0.1:9050"}  # שימוש ב-Tor כ-proxy
+                )
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
                     extra_http_headers={
@@ -259,7 +279,6 @@ async def scrape_channel14():
                 logger.debug(f"Channel 14 RSS content: {content[:500]}")
                 await browser.close()
             
-            # ניתוח ה-RSS כ-XML
             soup = BeautifulSoup(content, 'xml')
             items = soup.select('item')[:3]
             
@@ -282,7 +301,7 @@ async def scrape_channel14():
             logger.error(f"Timeout בנסיון {attempt + 1} עבור ערוץ 14")
             if attempt == max_retries - 1:
                 return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
-            await asyncio.sleep(2)  # המתנה קצרה לפני נסיון חוזר
+            await asyncio.sleep(2)
         except Exception as e:
             logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
             return [], f"שגיאה בסקריפינג: {str(e)}"
@@ -356,7 +375,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה האוטומטית לוקחת קצת זמן, חכו בסבלנות. אם אתם ממהרים, תמיד אפשר לפתוח את הטלוויזיה 😉")
+    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה דרך Tor לוקחת קצת זמן, חכו בסבלנות.")
     
     kan11_news, kan11_error = await scrape_kan11()
     channel14_news, channel14_error = await scrape_channel14()
@@ -434,7 +453,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with Playwright...")
+    logger.info("Initializing bot with Playwright and Tor...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
@@ -443,11 +462,9 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    # הרצת Flask ב-thread נפרד
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # הרצת הבוט כתהליך ראשי
     logger.info("Starting bot polling in main thread...")
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Bot polling started successfully")
