@@ -11,7 +11,10 @@ def proxy(path):
     if not target_url:
         return "Error: No URL provided", 400
     try:
-        response = requests.get(target_url, headers=request.headers, timeout=10)
+        # הוסף User-Agent כדי לדמות דפדפן
+        headers = dict(request.headers)
+        headers['User-Agent'] = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
+        response = requests.get(target_url, headers=headers, timeout=10)
         return response.content, response.status_code, response.headers.items()
     except Exception as e:
         return f"Error: {str(e)}", 500
