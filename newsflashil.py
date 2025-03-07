@@ -7,19 +7,17 @@ from flask import Flask
 import threading
 import logging
 import asyncio
+import subprocess
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
 from playwright.async_api import async_playwright
 
-# הגדרת לוגינג עם כתיבה לקובץ וקונסולה
+# הגדרת לוגינג
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('bot.log'),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler('bot.log'), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
@@ -188,15 +186,15 @@ def scrape_ynet_tech():
 
 async def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 scrape with Playwright (visible browser)")
+        logger.debug("Starting Kan 11 scrape with Playwright (visible browser via xvfb)")
         async with async_playwright() as p:
-            # ריצה עם headless=False, xvfb ידמה את המסך בשרת
-            browser = await p.chromium.launch(headless=False)
+            # שימוש ב-xvfb רק עבור Playwright
+            browser = await p.chromium.launch(headless=False, executable_path='/usr/bin/xvfb-run')
             page = await browser.new_page()
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(5)  # ממתין לפתרון הגנות
             content = await page.content()
-            logger.debug(f"Kan 11 HTML content: {content[:500]}")  # לוג לבדיקה
+            logger.debug(f"Kan 11 HTML content: {content[:500]}")
             await browser.close()
         
         soup = BeautifulSoup(content, 'html.parser')
@@ -407,7 +405,7 @@ if __name__ == "__main__":
     bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
 
-    # הרצת שרת Flask כתהליך ראשי
-    port = int(os.environ.get("PORT", 8080))
+    # הרצת שרת Flask כתהליך ראשי על הפורט של Render
+    port = int(os.environ.get("PORT", 10000))  # ברירת מחדל 10000 לפי Render
     logger.debug(f"Starting Flask on port {port}")
     app.run(host="0.0.0.0", port=port)
