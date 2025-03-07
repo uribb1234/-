@@ -7,3 +7,4 @@ feedparser
 pandas
 openpyxl
 stem
+cloudscraper
