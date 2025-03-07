@@ -7,7 +7,6 @@ from flask import Flask
 import threading
 import logging
 import asyncio
-import aiohttp
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
@@ -192,7 +191,7 @@ async def scrape_kan11():
         try:
             logger.debug(f"Starting Kan 11 scrape with Playwright and proxy (attempt {attempt + 1})")
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://54.36.176.100:80'])
+                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://185.199.229.156:7492'])
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
                     extra_http_headers={
@@ -240,40 +239,53 @@ async def scrape_kan11():
             return [], f"שגיאה בסקריפינג: {str(e)}"
 
 async def scrape_channel14():
-    try:
-        logger.debug("Starting Channel 14 scrape with proxy")
-        url = NEWS_SITES['channel14']  # ודא שזה ה-URL הנכון של ה-RSS
-        async with aiohttp.ClientSession() as session:
-            # שימוש ב-proxy
-            async with session.get(url, proxy="http://54.36.176.100:80", timeout=aiohttp.ClientTimeout(total=60)) as response:
-                rss_content = await response.text()
-                logger.debug(f"Channel 14 RSS content: {rss_content[:500]}")
+    max_retries = 2  # נסה עד 2 פעמים
+    for attempt in range(max_retries):
+        try:
+            logger.debug(f"Starting Channel 14 scrape with Playwright and proxy (attempt {attempt + 1})")
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://185.199.229.156:7492'])
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                    extra_http_headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Referer": "https://www.now14.co.il/",
+                        "Accept-Language": "en-US,en;q=0.5"
+                    }
+                )
+                page = await context.new_page()
+                await page.goto(NEWS_SITES['channel14'], wait_until="networkidle", timeout=60000)
+                content = await page.content()
+                logger.debug(f"Channel 14 RSS content: {content[:500]}")
+                await browser.close()
+            
+            # ניתוח ה-RSS כ-XML
+            soup = BeautifulSoup(content, 'xml')
+            items = soup.select('item')[:3]
+            
+            if not items:
+                logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
+                logger.debug(f"Channel 14 full RSS: {content}")
+                return [], "לא נמצאו מבזקים ב-RSS"
+            
+            results = []
+            for item in items:
+                title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
+                link = item.find('link').get_text(strip=True) if item.find('link') else None
+                pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
+                results.append({'time': pub_date, 'title': title, 'link': link})
+            
+            logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
+            return results, None
         
-        # ניתוח ה-RSS (בהנחה שזה XML תקין)
-        soup = BeautifulSoup(rss_content, 'xml')
-        items = soup.select('item')[:3]
-        
-        if not items:
-            logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
-            logger.debug(f"Channel 14 full RSS: {rss_content}")
-            return [], "לא נמצאו מבזקים ב-RSS"
-        
-        results = []
-        for item in items:
-            title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
-            link = item.find('link').get_text(strip=True) if item.find('link') else None
-            pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
-            results.append({'time': pub_date, 'title': title, 'link': link})
-        
-        logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
-        return results, None
-    
-    except asyncio.TimeoutError:
-        logger.error("Timeout בנסיון לערוץ 14")
-        return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
-    except Exception as e:
-        logger.error(f"שגיאה בעיבוד ה-RSS של ערוץ 14: {str(e)}")
-        return [], f"שגיאה בעיבוד ה-RSS: {str(e)}"
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout בנסיון {attempt + 1} עבור ערוץ 14")
+            if attempt == max_retries - 1:
+                return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
+            await asyncio.sleep(2)  # המתנה קצרה לפני נסיון חוזר
+        except Exception as e:
+            logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
+            return [], f"שגיאה בסקריפינג: {str(e)}"
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
