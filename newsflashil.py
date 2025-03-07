@@ -406,8 +406,8 @@ def home():
     return "Bot is alive!"
 
 def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    logger.debug(f"Starting Flask on port {port}")
+    port = int(os.environ.get("PORT", 8080))  # מקבל את הפורט מ-Render
+    logger.debug(f"PORT received from environment: {port}")
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
