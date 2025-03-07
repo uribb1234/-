@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, Response
 import requests
 import os
 
@@ -11,20 +11,17 @@ def proxy(path):
     if not target_url:
         return "Error: No URL provided", 400
     try:
-        # הגדר headers מלאים לדימוי דפדפן
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.5',
             'Accept-Encoding': 'gzip, deflate, br',
-            'Referer': 'https://www.google.com',
+            'Referer': target_url,  # שימוש ב-URL היעד כ-Referer
             'Connection': 'keep-alive'
         }
-        # תמיכה בהפניות
         response = requests.get(target_url, headers=headers, timeout=10, allow_redirects=True)
-        if response.status_code != 200:
-            return f"Error from target: {response.status_code} - {response.text}", response.status_code
-        return response.content, response.status_code, response.headers.items()
+        # החזר את התוכן עם ה-headers המקוריים של התגובה
+        return Response(response.content, status=response.status_code, headers=dict(response.headers))
     except Exception as e:
         return f"Proxy Error: {str(e)}", 500
 
