@@ -188,54 +188,39 @@ def scrape_ynet_tech():
 
 async def scrape_kan11():
     try:
-        logger.debug("Starting Kan 11 scrape with Playwright")
+        logger.debug("Starting Kan 11 scrape with Playwright (visible browser)")
         async with async_playwright() as p:
-            # פותח דפדפן במצב לא מוסתר
-            browser = await p.chromium.launch(headless=False)  # שינוי למצב לא מוסתר
-            context = await browser.new_context()
-            page = await context.new_page()
-
-            # גישה לדף כאן 11
+            # ריצה עם headless=False, xvfb ידמה את המסך בשרת
+            browser = await p.chromium.launch(headless=False)
+            page = await browser.new_page()
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
-            
-            # ממתין לטעינה מלאה (ניתן להתאים את הזמן לפי הצורך)
-            await asyncio.sleep(5)
-
-            # לוג - תוכן HTML לניתוח
+            await asyncio.sleep(5)  # ממתין לפתרון הגנות
             content = await page.content()
-            logger.debug(f"Kan 11 HTML content: {content[:500]}")  # לוג של ה-HTML הראשוני לבדיקה
-            
-            # עיבוד HTML עם BeautifulSoup
-            soup = BeautifulSoup(content, 'html.parser')
-            items = soup.select('div.accordion-item.f-news__item')[:3]
-            
-            if not items:
-                logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
-                logger.debug(f"Kan 11 full HTML: {content}")  # לוג מלא של ה-HTML אם אין מבזקים
-                return [], "לא נמצאו מבזקים ב-HTML"
-
-            results = []
-            for item in items:
-                time_tag = item.select_one('div.time')
-                title_tag = item.select_one('div.d-flex.flex-grow-1 span')
-                link_tag = item.select_one('a.card-link')
-                
-                article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-                title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-                link = link_tag['href'] if link_tag else None
-                
-                # וידוא שהלינק תקין
-                if link and not link.startswith('http'):
-                    link = f"https://www.kan.org.il{link}"
-                
-                results.append({'time': article_time, 'title': title, 'link': link})
-                logger.debug(f"Kan 11 article: time='{article_time}', title='{title}', link='{link}'")
-            
-            # סגירת הדפדפן
+            logger.debug(f"Kan 11 HTML content: {content[:500]}")  # לוג לבדיקה
             await browser.close()
-
-            logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
-            return results, None
+        
+        soup = BeautifulSoup(content, 'html.parser')
+        items = soup.select('div.accordion-item.f-news__item')[:3]
+        
+        if not items:
+            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+            logger.debug(f"Kan 11 full HTML: {content}")
+            return [], "לא נמצאו מבזקים ב-HTML"
+        
+        results = []
+        for item in items:
+            time_tag = item.select_one('div.time')
+            title_tag = item.select_one('div.d-flex.flex-grow-1 span')
+            link_tag = item.select_one('a.card-link')
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+            link = link_tag['href'] if link_tag else None
+            if link and not link.startswith('http'):
+                link = f"https://www.kan.org.il{link}"
+            results.append({'time': article_time, 'title': title, 'link': link})
+        
+        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
+        return results, None
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
@@ -245,7 +230,7 @@ async def scrape_channel14():
         logger.debug("Starting Channel 14 scrape with RSS")
         response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=10)
         content = response.text
-        logger.debug(f"Channel 14 RSS content: {content[:500]}")  # לוג של התוכן הראשוני
+        logger.debug(f"Channel 14 RSS content: {content[:500]}")
         
         feed = feedparser.parse(content)
         if feed.bozo:
@@ -254,12 +239,11 @@ async def scrape_channel14():
             return [], f"שגיאה בעיבוד ה-RSS: {feed.bozo_exception}"
         
         results = []
-        for entry in feed.entries[:3]:  # לוקח את 3 הפריטים הראשונים כמבזקים
+        for entry in feed.entries[:3]:
             article_time = entry.get('pubDate', 'ללא שעה')
             title = entry.get('title', 'ללא כותרת')
             link = entry.get('link', '#')
             results.append({'time': article_time, 'title': title, 'link': link})
-            logger.debug(f"Channel 14 article: time='{article_time}', title='{title}', link='{link}'")
         
         logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
         return results, None
@@ -405,10 +389,9 @@ def home():
     logger.debug("Flask server accessed")
     return "Bot is alive!"
 
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))  # מקבל את הפורט מ-Render
-    logger.debug(f"PORT received from environment: {port}")
-    app.run(host="0.0.0.0", port=port)
+def run_bot():
+    logger.debug("Starting bot polling in thread...")
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     logger.debug("Initializing bot with Playwright...")
@@ -420,8 +403,11 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
 
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
+    # הרצת הבוט ב-thread נפרד
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
 
-    logger.debug("Starting bot polling...")
-    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # הרצת שרת Flask כתהליך ראשי
+    port = int(os.environ.get("PORT", 8080))
+    logger.debug(f"Starting Flask on port {port}")
+    app.run(host="0.0.0.0", port=port)
