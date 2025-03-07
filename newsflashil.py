@@ -191,7 +191,7 @@ async def scrape_kan11():
         try:
             logger.debug(f"Starting Kan 11 scrape with Playwright and proxy (attempt {attempt + 1})")
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://185.199.229.156:7492'])
+                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://85.208.200.185:8081'])
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
                     extra_http_headers={
@@ -244,7 +244,7 @@ async def scrape_channel14():
         try:
             logger.debug(f"Starting Channel 14 scrape with Playwright and proxy (attempt {attempt + 1})")
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://185.199.229.156:7492'])
+                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://85.208.200.185:8081'])
                 context = await browser.new_context(
                     user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
                     extra_http_headers={
