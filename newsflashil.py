@@ -7,6 +7,7 @@ from flask import Flask
 import threading
 import logging
 import asyncio
+import aiohttp
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
@@ -186,84 +187,93 @@ def scrape_ynet_tech():
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def scrape_kan11():
-    try:
-        logger.debug("Starting Kan 11 scrape with Playwright and proxy")
-        async with async_playwright() as p:
-            # שימוש ב-proxy שנתת: 54.36.176.100 (נניח שפורט ברירת מחדל 80, כי לא ציינת פורט)
-            browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://54.36.176.100:80'])
-            context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
-                extra_http_headers={
-                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                    "Referer": "https://www.kan.org.il/",
-                    "Accept-Language": "en-US,en;q=0.5"
-                }
-            )
-            page = await context.new_page()
-            # הדפסת headers של הבקשה לדיבאג
-            await page.route("**/*", lambda route: (logger.debug(f"Request headers: {route.request.headers}"), route.continue_()))
+    max_retries = 2  # נסה עד 2 פעמים
+    for attempt in range(max_retries):
+        try:
+            logger.debug(f"Starting Kan 11 scrape with Playwright and proxy (attempt {attempt + 1})")
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True, args=['--proxy-server=http://54.36.176.100:80'])
+                context = await browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                    extra_http_headers={
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                        "Referer": "https://www.kan.org.il/",
+                        "Accept-Language": "en-US,en;q=0.5"
+                    }
+                )
+                page = await context.new_page()
+                await page.goto(NEWS_SITES['kan11'], wait_until="networkidle", timeout=60000)
+                content = await page.content()
+                logger.debug(f"Kan 11 HTML content: {content[:500]}")
+                await browser.close()
             
-            # ניסיון לגשת לדף עם timeout של 60 שניות
-            await page.goto(NEWS_SITES['kan11'], wait_until="networkidle", timeout=60000)
-            content = await page.content()
-            logger.debug(f"Kan 11 HTML content: {content[:500]}")
-            await browser.close()
+            soup = BeautifulSoup(content, 'html.parser')
+            items = soup.select('div.accordion-item.f-news__item')[:3]
+            
+            if not items:
+                logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
+                logger.debug(f"Kan 11 full HTML: {content}")
+                return [], "לא נמצאו מבזקים ב-HTML"
+            
+            results = []
+            for item in items:
+                time_tag = item.select_one('div.time')
+                title_tag = item.select_one('div.d-flex.flex-grow-1 span')
+                link_tag = item.select_one('a.card-link')
+                article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
+                title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
+                link = link_tag['href'] if link_tag else None
+                if link and not link.startswith('http'):
+                    link = f"https://www.kan.org.il{link}"
+                results.append({'time': article_time, 'title': title, 'link': link})
+            
+            logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
+            return results, None
         
-        soup = BeautifulSoup(content, 'html.parser')
-        items = soup.select('div.accordion-item.f-news__item')[:3]
-        
-        if not items:
-            logger.warning("לא נמצאו מבזקים ב-HTML של כאן 11")
-            logger.debug(f"Kan 11 full HTML: {content}")
-            return [], "לא נמצאו מבזקים ב-HTML"
-        
-        results = []
-        for item in items:
-            time_tag = item.select_one('div.time')
-            title_tag = item.select_one('div.d-flex.flex-grow-1 span')
-            link_tag = item.select_one('a.card-link')
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = link_tag['href'] if link_tag else None
-            if link and not link.startswith('http'):
-                link = f"https://www.kan.org.il{link}"
-            results.append({'time': article_time, 'title': title, 'link': link})
-        
-        logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
-        return results, None
-    
-    except asyncio.TimeoutError:
-        logger.error("השאיבה נכשלה: Timeout עם ה-proxy")
-        return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
-    except Exception as e:
-        logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
-        return [], f"שגיאה בסקריפינג: {str(e)}"
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout בנסיון {attempt + 1} עבור כאן 11")
+            if attempt == max_retries - 1:
+                return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
+            await asyncio.sleep(2)  # המתנה קצרה לפני נסיון חוזר
+        except Exception as e:
+            logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
+            return [], f"שגיאה בסקריפינג: {str(e)}"
 
 async def scrape_channel14():
     try:
-        logger.debug("Starting Channel 14 scrape with RSS")
-        response = requests.get(NEWS_SITES['channel14'], headers=BASE_HEADERS, timeout=10)
-        content = response.text
-        logger.debug(f"Channel 14 RSS content: {content[:500]}")
+        logger.debug("Starting Channel 14 scrape with proxy")
+        url = NEWS_SITES['channel14']  # ודא שזה ה-URL הנכון של ה-RSS
+        async with aiohttp.ClientSession() as session:
+            # שימוש ב-proxy
+            async with session.get(url, proxy="http://54.36.176.100:80", timeout=aiohttp.ClientTimeout(total=60)) as response:
+                rss_content = await response.text()
+                logger.debug(f"Channel 14 RSS content: {rss_content[:500]}")
         
-        feed = feedparser.parse(content)
-        if feed.bozo:
-            logger.warning(f"Failed to parse Channel 14 RSS: {feed.bozo_exception}")
-            logger.debug(f"Channel 14 full content: {content}")
-            return [], f"שגיאה בעיבוד ה-RSS: {feed.bozo_exception}"
+        # ניתוח ה-RSS (בהנחה שזה XML תקין)
+        soup = BeautifulSoup(rss_content, 'xml')
+        items = soup.select('item')[:3]
+        
+        if not items:
+            logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
+            logger.debug(f"Channel 14 full RSS: {rss_content}")
+            return [], "לא נמצאו מבזקים ב-RSS"
         
         results = []
-        for entry in feed.entries[:3]:
-            article_time = entry.get('pubDate', 'ללא שעה')
-            title = entry.get('title', 'ללא כותרת')
-            link = entry.get('link', '#')
-            results.append({'time': article_time, 'title': title, 'link': link})
+        for item in items:
+            title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
+            link = item.find('link').get_text(strip=True) if item.find('link') else None
+            pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
+            results.append({'time': pub_date, 'title': title, 'link': link})
         
         logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
         return results, None
+    
+    except asyncio.TimeoutError:
+        logger.error("Timeout בנסיון לערוץ 14")
+        return [], "השאיבה האוטומטית לוקחת הרבה זמן, כבר עדיף לפתוח את הטלוויזיה 😉"
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
-        return [], f"שגיאה לא ידועה: {str(e)}"
+        logger.error(f"שגיאה בעיבוד ה-RSS של ערוץ 14: {str(e)}")
+        return [], f"שגיאה בעיבוד ה-RSS: {str(e)}"
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -334,7 +344,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה האוטומטית לוקחת הטלוויזיה הרבה זמן, חכו בסבלנות. אם אתם לא רוצים לחכות תפתחו את הטלוויזיה😉")
+    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה האוטומטית לוקחת קצת זמן, חכו בסבלנות. אם אתם ממהרים, תמיד אפשר לפתוח את הטלוויזיה 😉")
     
     kan11_news, kan11_error = await scrape_kan11()
     channel14_news, channel14_error = await scrape_channel14()
@@ -352,7 +362,10 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message += "\n**עכשיו 14**:\n"
     if channel14_news:
         for idx, article in enumerate(channel14_news[:3], 1):
-            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            if article['link']:
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {channel14_error}\n"
     
