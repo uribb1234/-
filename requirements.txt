@@ -5,3 +5,4 @@ flask
 feedparser
 pandas
 openpyxl
+cloudscraper
