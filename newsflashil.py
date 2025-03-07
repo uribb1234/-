@@ -12,15 +12,14 @@ from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import feedparser
 from playwright.async_api import async_playwright
 
-# הגדרת לוגינג - רק ל-stdout כדי שיופיע ב-Render
+# הגדרת לוגינג
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler()]  # הסרת FileHandler לעת עתה
+    handlers=[logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
-# בדיקת TOKEN מוקדם עם לוג
 logger.debug("Checking TELEGRAM_TOKEN...")
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 if not TOKEN:
@@ -190,7 +189,7 @@ async def scrape_kan11():
     try:
         logger.debug("Starting Kan 11 scrape with Playwright")
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)  # חזרתי ל-headless כי xvfb גרם לבעיות
+            browser = await p.chromium.launch(headless=True)
             page = await browser.new_page()
             await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(5)
@@ -276,7 +275,7 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for idx, article in enumerate(sport1_news[:3], 1):
             message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
-        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport5_error}\n"
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport1_error}\n"
     
     message += "\n**ONE**\n"
     if one_news:
@@ -319,7 +318,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...\n*הערה: הטעינה עשויה להיות ארוכה מהרגיל בגלל שימוש בדפדפן וירטואלי.*")
+    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = await scrape_kan11()
     channel14_news, channel14_error = await scrape_channel14()
@@ -389,13 +388,17 @@ def home():
     return "Bot is alive!"
 
 def run_bot():
+    logger.info("Starting bot polling in thread...")
+    loop = asyncio.new_event_loop()  # יצירת event loop חדש ל-thread
+    asyncio.set_event_loop(loop)     # הגדרת ה-loop כפעיל ב-thread הזה
     try:
-        logger.info("Starting bot polling in thread...")
-        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
         logger.info("Bot polling started successfully")
     except Exception as e:
         logger.error(f"Error in bot polling: {str(e)}")
         raise
+    finally:
+        loop.close()
 
 if __name__ == "__main__":
     logger.info("Initializing bot with Playwright...")
