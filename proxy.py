@@ -1,6 +1,6 @@
 from flask import Flask, request, Response
 import os
-import undetected_chromedriver.v2 as uc
+import undetected_chromedriver as uc
 from time import sleep
 
 app = Flask(__name__)
