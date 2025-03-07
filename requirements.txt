@@ -1,11 +1,7 @@
 requests
 beautifulsoup4
-telegram
 python-telegram-bot
 flask
 feedparser
 pandas
 openpyxl
-stem
-cloudscraper
-parser
