@@ -191,11 +191,20 @@ async def scrape_kan11():
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36",
+                extra_http_headers={
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Referer": "https://www.kan.org.il/",
+                    "Accept-Language": "en-US,en;q=0.5"
+                }
             )
             page = await context.new_page()
-            await page.goto(NEWS_SITES['kan11'], wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(5)  # ממתין כדי לוודא שהדף נטען
+            await page.goto(NEWS_SITES['kan11'], wait_until="networkidle", timeout=60000)
+            # ממתין עד שדף ה-Cloudflare ייעלם או עד שתוכן אמיתי יופיע
+            await page.wait_for_function(
+                "document.querySelector('div.cf-error-details') === null || document.querySelector('div.accordion-item.f-news__item') !== null",
+                timeout=5000  # 5 שניות בלבד
+            )
             content = await page.content()
             logger.debug(f"Kan 11 HTML content: {content[:500]}")
             await browser.close()
