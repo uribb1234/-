@@ -334,7 +334,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tv_news, username: {username}")
     log_interaction(user_id, "tv_news", username)
     await query.answer()
-    await query.message.reply_text("מחפש חדשות מערוצי טלוויזיה...")
+    await query.message.reply_text("מביא חדשות מערוצי טלוויזיה... השאיבה האוטומטית לוקחת הטלוויזיה הרבה זמן, חכו בסבלנות. אם אתם לא רוצים לחכות תפתחו את הטלוויזיה😉")
     
     kan11_news, kan11_error = await scrape_kan11()
     channel14_news, channel14_error = await scrape_channel14()
