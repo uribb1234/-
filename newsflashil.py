@@ -34,7 +34,7 @@ APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! אנא הגדר אותו ב-Render תחת Environment Variables עם הטוקן האמיתי מ-Apify Console.")
     exit(1)
-logger.debug(f"APIFY_API_TOKEN length: {len(APIFY_API_TOKEN)} characters (not showing full token for security)")  # לא מדפיס את הטוקן המלא
+logger.debug(f"APIFY_API_TOKEN length: {len(APIFY_API_TOKEN)} characters (not showing full token for security)")
 APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"
 APIFY_API_URL = "https://api.apify.com/v2"
 
@@ -176,12 +176,12 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-# פונקציה מעודכנת להפעלת ה-Actor של Apify
+# פונקציה מעודכנת לשאיבת תוצאות הריצה האחרונה של ה-Actor
 async def run_apify_actor():
     try:
-        logger.debug("Starting Apify Actor run...")
-        # כתובת ה-API להפעלת ה-Actor שלך ב-Apify
-        url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs"
+        logger.debug("Fetching the latest Apify Actor run...")
+        # כתובת ה-API לשאיבת הריצות של ה-Actor
+        url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=1&desc=1"
 
         # הגדרת הכותרות עם הטוקן (כולל Bearer)
         headers = {
@@ -189,66 +189,46 @@ async def run_apify_actor():
             "Content-Type": "application/json"
         }
 
-        # הגדרת הפרמטרים לבקשה
-        data = {
-            "input": {
-                "url": "https://www.now14.co.il/feed/"
-            },
-            "timeout": 180,
-            "maxRequestsPerCrawl": 10,
-            "proxyConfiguration": {"useApifyProxy": True}
-        }
+        # שליחת בקשה ל-API כדי לקבל את הריצה האחרונה
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch latest Apify Actor run: {response.status_code} - {response.text}")
+            response.raise_for_status()
+        run_data = response.json()
+        
+        # בדיקה אם יש ריצות
+        if not run_data.get('data', {}).get('items'):
+            logger.error("No runs found for this Actor.")
+            return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל 45 דקות ב-Apify."
 
-        # לוג של ה-JSON שנשלח
-        logger.debug(f"Apify Actor run payload: {json.dumps(data, indent=2)}")
-        logger.debug(f"Authorization header: Bearer {APIFY_API_TOKEN[:5]}... (shortened for security)")
+        # לקיחת הריצה האחרונה
+        latest_run = run_data['data']['items'][0]
+        run_id = latest_run['id']
+        status = latest_run['status']
+        logger.debug(f"Latest run ID: {run_id}, Status: {status}")
 
-        # שליחת בקשה ל-API
-        run_response = requests.post(url, headers=headers, json=data, timeout=30)
-        if run_response.status_code != 201:
-            logger.error(f"Failed to start Apify Actor: {run_response.status_code} - {run_response.text}")
-            run_response.raise_for_status()
-        run_data = run_response.json()
-        run_id = run_data['data']['id']
-        logger.debug(f"Actor run started with ID: {run_id}")
-
-        # המתנה עד שהריצה תסתיים
-        max_wait_time = 300  # המתנה מקסימלית של 5 דקות
-        wait_time = 0
-        while wait_time < max_wait_time:
-            status_response = requests.get(
-                f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs/{run_id}",
-                headers=headers,
-                timeout=30
-            )
-            if status_response.status_code != 200:
-                logger.error(f"Failed to get run status: {status_response.status_code} - {status_response.text}")
-                status_response.raise_for_status()
-            status_data = status_response.json()
-            status = status_data['data']['status']
-            if status in ['SUCCEEDED', 'FAILED', 'TIMED-OUT']:
-                break
-            time.sleep(5)
-            wait_time += 5
-            logger.debug(f"Waiting... Total wait time: {wait_time} seconds")
-
+        # בדיקה אם הריצה האחרונה הצליחה
         if status != 'SUCCEEDED':
-            logger.error(f"Actor run failed with status: {status}")
-            return [], f"שגיאה בהרצת ה-Actor: {status}"
+            logger.error(f"Latest Actor run did not succeed. Status: {status}")
+            return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
+
+        # שליפת ה-Dataset ID מהריצה האחרונה
+        dataset_id = latest_run['defaultDatasetId']
+        if not dataset_id:
+            logger.error("No dataset ID found in the latest run.")
+            return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
 
         # שליפת הנתונים מה-Dataset
-        dataset_id = run_data['data']['defaultDatasetId']
-        dataset_response = requests.get(
-            f"{APIFY_API_URL}/datasets/{dataset_id}/items",
-            headers=headers,
-            timeout=30
-        )
-        dataset_response.raise_for_status()
+        dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
+        dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
+        if dataset_response.status_code != 200:
+            logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
+            dataset_response.raise_for_status()
         dataset_items = dataset_response.json()
 
         if not dataset_items:
             logger.warning("לא נמצאו פריטים ב-Dataset")
-            return [], "לא נמצאו מבזקים ב-Dataset"
+            return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
 
         # עיבוד התוצאות
         results = []
@@ -266,7 +246,7 @@ async def run_apify_actor():
         return results, None
 
     except Exception as e:
-        logger.error(f"שגיאה בהפעלת Apify Actor: {str(e)}")
+        logger.error(f"שגיאה בשאיבת תוצאות ה-Actor מ-Apify: {str(e)}")
         return [], f"שגיאה בשאיבה דרך Apify: {str(e)}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -412,7 +392,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = await run_apify_actor()  # מפעיל את Apify באופן אוטומטי
+    channel14_news, channel14_error = await run_apify_actor()  # שואב את תוצאות הריצה האחרונה
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
