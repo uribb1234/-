@@ -188,9 +188,11 @@ async def run_apify_actor():
             "Content-Type": "application/json"
         }
 
-        # הגדרת הפרמטרים לבקשה
+        # הגדרת הפרמטרים לבקשה עם מבנה input נכון
         data = {
-            "startUrls": [{"url": "https://www.now14.co.il/feed/"}],
+            "input": {
+                "url": "https://www.now14.co.il/feed/"  # שדה url בתוך input
+            },
             "timeout": 180,  # הגדלנו את הזמן ל-180 שניות
             "maxRequestsPerCrawl": 10,
             "proxyConfiguration": {"useApifyProxy": True}
