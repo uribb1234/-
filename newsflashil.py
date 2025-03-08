@@ -29,13 +29,13 @@ if not TOKEN:
 logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
 
 # הגדרת API של Apify
-APIFY_API_TOKEN = os.getenv("apify_api_2bbiGEMX8sexWDZ8UejW76R7dwxe093E0p5f")
-APIFY_ACTOR_ID = "uribbgg/my-actor-2"
-APIFY_API_URL = "https://api.apify.com/v2"
-
+APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
+logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN}")  # לוג זמני לבדיקה
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
     exit(1)
+APIFY_ACTOR_ID = "your-username~now14-telegram-bot"  # החלף עם ה-ID שלך
+APIFY_API_URL = "https://api.apify.com/v2"
 
 NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
