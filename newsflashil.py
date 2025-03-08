@@ -8,6 +8,7 @@ from flask import Flask
 import threading
 import logging
 import asyncio
+import json  # נוסף עבור הדפסת ה-JSON בצורה ברורה
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import signal
@@ -188,15 +189,18 @@ async def run_apify_actor():
             "Content-Type": "application/json"
         }
 
-        # הגדרת הפרמטרים לבקשה עם מבנה input נכון
+        # הגדרת הפרמטרים לבקשה עם מבנה input פשוט יותר
         data = {
             "input": {
-                "startUrls": [{"url": "https://www.now14.co.il/feed/"}]  # שדה startUrls בתוך input
+                "url": "https://www.now14.co.il/feed/"  # שדה url ישירות בתוך input
             },
             "timeout": 180,  # הגדלנו את הזמן ל-180 שניות
             "maxRequestsPerCrawl": 10,
             "proxyConfiguration": {"useApifyProxy": True}
         }
+
+        # לוג של ה-JSON שנשלח
+        logger.debug(f"Apify Actor run payload: {json.dumps(data, indent=2)}")
 
         # שליחת בקשה ל-API
         run_response = requests.post(url, headers=headers, json=data, timeout=30)
