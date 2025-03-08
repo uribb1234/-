@@ -34,7 +34,7 @@ logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN}")  # לוג זמני ל�
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
     exit(1)
-APIFY_ACTOR_ID = "uribbgg/my-actor-2"  # החלף עם ה-ID שלך
+APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"  # החלף עם ה-ID שלך
 APIFY_API_URL = "https://api.apify.com/v2"
 
 NEWS_SITES = {
