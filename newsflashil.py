@@ -29,7 +29,7 @@ if not TOKEN:
 logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
 
 # הגדרת API של Apify
-APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
+APIFY_API_TOKEN = os.getenv("apify_api_2bbiGEMX8sexWDZ8UejW76R7dwxe093E0p5f")
 logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN[:5]}... (shortened for security)")  # לוג זמני לבדיקה
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
