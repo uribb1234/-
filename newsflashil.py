@@ -34,7 +34,7 @@ logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN}")  # לוג זמני ל�
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
     exit(1)
-APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"
+APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"  # החלף עם מזהה הסידורי המדויק של ה-Actor שלך
 APIFY_API_URL = "https://api.apify.com/v2"
 
 NEWS_SITES = {
@@ -185,7 +185,9 @@ async def run_apify_actor():
             headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"},
             json={
                 "startUrls": [{"url": "https://www.now14.co.il/feed/"}],
-                "timeout": 60
+                "timeout": 60,
+                "maxRequestsPerCrawl": 10,  # הגדרה נפוצה, התאם לפי הצורך
+                "proxyConfiguration": {"useApifyProxy": False}  # ניתן לשנות ל-True אם משתמש ב-Proxy
             }
         )
         if run_response.status_code != 201:
