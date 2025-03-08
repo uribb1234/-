@@ -199,7 +199,7 @@ async def run_apify_actor():
         # בדיקה אם יש ריצות
         if not run_data.get('data', {}).get('items'):
             logger.error("No runs found for this Actor.")
-            return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל 45 דקות ב-Apify."
+            return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
 
         # לקיחת הריצה האחרונה
         latest_run = run_data['data']['items'][0]
@@ -230,11 +230,12 @@ async def run_apify_actor():
             logger.warning("לא נמצאו פריטים ב-Dataset")
             return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
 
-        # עיבוד התוצאות
+        # עיבוד התוצאות עם פארסר lxml במקום xml
         results = []
         for item in dataset_items[:3]:  # עד 3 מבזקים
             content = item.get('content', '')
-            soup = BeautifulSoup(content, 'xml')
+            # שימוש ב-lxml כפארסר במקום xml
+            soup = BeautifulSoup(content, 'lxml')
             items = soup.select('item')[:3]
             for rss_item in items:
                 title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
