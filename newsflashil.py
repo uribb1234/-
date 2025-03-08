@@ -34,7 +34,7 @@ logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN}")  # לוג זמני ל�
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
     exit(1)
-APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"  # החלף עם ה-ID שלך
+APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"
 APIFY_API_URL = "https://api.apify.com/v2"
 
 NEWS_SITES = {
@@ -183,9 +183,14 @@ async def run_apify_actor():
         run_response = requests.post(
             f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs",
             headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"},
-            json={"timeout": 60}
+            json={
+                "startUrls": [{"url": "https://www.now14.co.il/feed/"}],
+                "timeout": 60
+            }
         )
-        run_response.raise_for_status()
+        if run_response.status_code != 201:
+            logger.error(f"Failed to start Apify Actor: {run_response.status_code} - {run_response.text}")
+            run_response.raise_for_status()
         run_data = run_response.json()
         run_id = run_data['data']['id']
         logger.debug(f"Actor run started with ID: {run_id}")
@@ -198,7 +203,9 @@ async def run_apify_actor():
                 f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs/{run_id}",
                 headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"}
             )
-            status_response.raise_for_status()
+            if status_response.status_code != 200:
+                logger.error(f"Failed to get run status: {status_response.status_code} - {status_response.text}")
+                status_response.raise_for_status()
             status_data = status_response.json()
             status = status_data['data']['status']
             if status in ['SUCCEEDED', 'FAILED', 'TIMED-OUT']:
