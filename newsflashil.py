@@ -30,11 +30,11 @@ logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
 
 # הגדרת API של Apify
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
-logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN}")  # לוג זמני לבדיקה
+logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN[:5]}... (shortened for security)")  # לוג זמני לבדיקה
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
     exit(1)
-APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"  # החלף עם מזהה הסידורי המדויק של ה-Actor שלך
+APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"
 APIFY_API_URL = "https://api.apify.com/v2"
 
 NEWS_SITES = {
@@ -175,23 +175,29 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-# פונקציה להפעלת ה-Actor של Apify ולשליפת התוצאות
+# פונקציה מעודכנת להפעלת ה-Actor של Apify
 async def run_apify_actor():
     try:
-        # הפעל את ה-Actor
         logger.debug("Starting Apify Actor run...")
-        run_response = requests.post(
-            f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs",
-            headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"},
-            json={
-                "input": {
-                    "url": "https://www.now14.co.il/feed/"
-                },
-                "timeout": 60,
-                "maxRequestsPerCrawl": 10,
-                "proxyConfiguration": {"useApifyProxy": False}
-            }
-        )
+        # כתובת ה-API להפעלת ה-Actor שלך ב-Apify
+        url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs"
+
+        # הגדרת הכותרות עם הטוקן (כולל Bearer) - בדיוק כפי שביקשת
+        headers = {
+            "Authorization": f"Bearer {APIFY_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+
+        # הגדרת הפרמטרים לבקשה
+        data = {
+            "startUrls": [{"url": "https://www.now14.co.il/feed/"}],
+            "timeout": 180,  # הגדלנו את הזמן ל-180 שניות
+            "maxRequestsPerCrawl": 10,
+            "proxyConfiguration": {"useApifyProxy": True}
+        }
+
+        # שליחת בקשה ל-API
+        run_response = requests.post(url, headers=headers, json=data, timeout=30)
         if run_response.status_code != 201:
             logger.error(f"Failed to start Apify Actor: {run_response.status_code} - {run_response.text}")
             run_response.raise_for_status()
@@ -199,13 +205,14 @@ async def run_apify_actor():
         run_id = run_data['data']['id']
         logger.debug(f"Actor run started with ID: {run_id}")
 
-        # המתן עד שהריצה תסתיים
-        max_wait_time = 120  # המתנה מקסימלית של 120 שניות
+        # המתנה עד שהריצה תסתיים
+        max_wait_time = 300  # המתנה מקסימלית של 5 דקות
         wait_time = 0
         while wait_time < max_wait_time:
             status_response = requests.get(
                 f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs/{run_id}",
-                headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"}
+                headers=headers,
+                timeout=30
             )
             if status_response.status_code != 200:
                 logger.error(f"Failed to get run status: {status_response.status_code} - {status_response.text}")
@@ -216,16 +223,18 @@ async def run_apify_actor():
                 break
             time.sleep(5)
             wait_time += 5
+            logger.debug(f"Waiting... Total wait time: {wait_time} seconds")
 
         if status != 'SUCCEEDED':
             logger.error(f"Actor run failed with status: {status}")
             return [], f"שגיאה בהרצת ה-Actor: {status}"
 
-        # שלוף את ה-Dataset מהריצה
+        # שליפת הנתונים מה-Dataset
         dataset_id = run_data['data']['defaultDatasetId']
         dataset_response = requests.get(
             f"{APIFY_API_URL}/datasets/{dataset_id}/items",
-            headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"}
+            headers=headers,
+            timeout=30
         )
         dataset_response.raise_for_status()
         dataset_items = dataset_response.json()
