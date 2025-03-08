@@ -8,7 +8,7 @@ from flask import Flask
 import threading
 import logging
 import asyncio
-import json  # נוסף עבור הדפסת ה-JSON בצורה ברורה
+import json
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import signal
@@ -29,12 +29,12 @@ if not TOKEN:
     exit(1)
 logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
 
-# הגדרת API של Apify עם ערך ברירת מחדל זמני
-APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN", "apify_api_2bbiGEMX8sexWDZ8UejW76R7dwxe093E0p5f")
+# הגדרת API של Apify עם אימות טוקן
+APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 if not APIFY_API_TOKEN:
-    logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
+    logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! אנא הגדר אותו ב-Render תחת Environment Variables עם הטוקן האמיתי מ-Apify Console.")
     exit(1)
-logger.debug(f"APIFY_API_TOKEN value: {APIFY_API_TOKEN[:5]}... (shortened for security)")  # לוג זמני לבדיקה
+logger.debug(f"APIFY_API_TOKEN length: {len(APIFY_API_TOKEN)} characters (not showing full token for security)")  # לא מדפיס את הטוקן המלא
 APIFY_ACTOR_ID = "XjjDkeadhnlDBTU6i"
 APIFY_API_URL = "https://api.apify.com/v2"
 
@@ -189,18 +189,19 @@ async def run_apify_actor():
             "Content-Type": "application/json"
         }
 
-        # הגדרת הפרמטרים לבקשה עם מבנה input פשוט יותר
+        # הגדרת הפרמטרים לבקשה
         data = {
             "input": {
-                "url": "https://www.now14.co.il/feed/"  # שדה url ישירות בתוך input
+                "url": "https://www.now14.co.il/feed/"
             },
-            "timeout": 180,  # הגדלנו את הזמן ל-180 שניות
+            "timeout": 180,
             "maxRequestsPerCrawl": 10,
             "proxyConfiguration": {"useApifyProxy": True}
         }
 
         # לוג של ה-JSON שנשלח
         logger.debug(f"Apify Actor run payload: {json.dumps(data, indent=2)}")
+        logger.debug(f"Authorization header: Bearer {APIFY_API_TOKEN[:5]}... (shortened for security)")
 
         # שליחת בקשה ל-API
         run_response = requests.post(url, headers=headers, json=data, timeout=30)
