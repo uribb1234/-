@@ -184,10 +184,12 @@ async def run_apify_actor():
             f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs",
             headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"},
             json={
-                "startUrls": [{"url": "https://www.now14.co.il/feed/"}],
+                "input": {
+                    "url": "https://www.now14.co.il/feed/"
+                },
                 "timeout": 60,
-                "maxRequestsPerCrawl": 10,  # הגדרה נפוצה, התאם לפי הצורך
-                "proxyConfiguration": {"useApifyProxy": False}  # ניתן לשנות ל-True אם משתמש ב-Proxy
+                "maxRequestsPerCrawl": 10,
+                "proxyConfiguration": {"useApifyProxy": False}
             }
         )
         if run_response.status_code != 201:
