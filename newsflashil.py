@@ -191,7 +191,7 @@ async def run_apify_actor():
         # הגדרת הפרמטרים לבקשה עם מבנה input נכון
         data = {
             "input": {
-                "url": "https://www.now14.co.il/feed/"  # שדה url בתוך input
+                "startUrls": [{"url": "https://www.now14.co.il/feed/"}]  # שדה startUrls בתוך input
             },
             "timeout": 180,  # הגדלנו את הזמן ל-180 שניות
             "maxRequestsPerCrawl": 10,
