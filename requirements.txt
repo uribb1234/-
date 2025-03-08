@@ -8,3 +8,4 @@ openpyxl
 cloudscraper
 selenium==4.11.2
 undetected-chromedriver>=3.5.5
+lxml
