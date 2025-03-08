@@ -10,7 +10,6 @@ import logging
 import asyncio
 from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
-import feedparser
 import signal
 from contextlib import contextmanager
 
@@ -28,6 +27,15 @@ if not TOKEN:
     logger.error("שגיאה: TELEGRAM_TOKEN לא מוגדר! הבוט לא ירוץ.")
     exit(1)
 logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
+
+# הגדרת API של Apify
+APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")  # החלף עם ה-Token שלך או שמור ב-Env
+APIFY_ACTOR_ID = "your-username/now14-telegram-bot"  # החלף עם ה-Actor ID שלך
+APIFY_API_URL = "https://api.apify.com/v2"
+
+if not APIFY_API_TOKEN:
+    logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! לא ניתן להפעיל את ה-Actor.")
+    exit(1)
 
 NEWS_SITES = {
     'ynet': 'https://www.ynet.co.il/news',
@@ -47,9 +55,6 @@ BASE_HEADERS = {
     'Connection': 'keep-alive',
     'Upgrade-Insecure-Requests': '1'
 }
-
-# URL של ה-Heroku Proxy שסיפקת
-HEROKU_PROXY_URL = "https://newsflashil-proxy-68a4b6e68b6c.herokuapp.com/"
 
 app = Flask(__name__)
 bot_app = Application.builder().token(TOKEN).build()
@@ -137,16 +142,14 @@ def scrape_ynet_tech():
 def scrape_kan11():
     try:
         with timeout(60):  # מגביל ל-60 שניות
-            logger.debug("Starting Kan 11 scrape via Heroku proxy")
-            proxy_url = f"{HEROKU_PROXY_URL}?url={NEWS_SITES['kan11']}"
-            response = requests.get(proxy_url, headers=BASE_HEADERS, timeout=15)
+            logger.debug("Starting Kan 11 scrape")
+            response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, timeout=15)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             items = soup.select('div.accordion-item.f-news__item')[:3]
             if not items:
                 logger.warning("לא נמצאו מבזקים ב-URL הראשי, מנסה URL חלופי")
-                proxy_url = f"{HEROKU_PROXY_URL}?url={NEWS_SITES['kan11_alt']}"
-                response = requests.get(proxy_url, headers=BASE_HEADERS, timeout=15)
+                response = requests.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, timeout=15)
                 soup = BeautifulSoup(response.text, 'html.parser')
                 items = soup.select('div.accordion-item.f-news__item')[:3]
                 if not items:
@@ -172,33 +175,72 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-def scrape_channel14():
+# פונקציה להפעלת ה-Actor של Apify ולשליפת התוצאות
+async def run_apify_actor():
     try:
-        with timeout(60):  # מגביל ל-60 שניות
-            logger.debug("Starting Channel 14 scrape via Heroku proxy")
-            proxy_url = f"{HEROKU_PROXY_URL}?url={NEWS_SITES['channel14']}"
-            response = requests.get(proxy_url, headers=BASE_HEADERS, timeout=15)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'xml')
+        # הפעל את ה-Actor
+        logger.debug("Starting Apify Actor run...")
+        run_response = requests.post(
+            f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs",
+            headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"},
+            json={"timeout": 60}
+        )
+        run_response.raise_for_status()
+        run_data = run_response.json()
+        run_id = run_data['data']['id']
+        logger.debug(f"Actor run started with ID: {run_id}")
+
+        # המתן עד שהריצה תסתיים
+        max_wait_time = 120  # המתנה מקסימלית של 120 שניות
+        wait_time = 0
+        while wait_time < max_wait_time:
+            status_response = requests.get(
+                f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs/{run_id}",
+                headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"}
+            )
+            status_response.raise_for_status()
+            status_data = status_response.json()
+            status = status_data['data']['status']
+            if status in ['SUCCEEDED', 'FAILED', 'TIMED-OUT']:
+                break
+            time.sleep(5)
+            wait_time += 5
+
+        if status != 'SUCCEEDED':
+            logger.error(f"Actor run failed with status: {status}")
+            return [], f"שגיאה בהרצת ה-Actor: {status}"
+
+        # שלוף את ה-Dataset מהריצה
+        dataset_id = run_data['data']['defaultDatasetId']
+        dataset_response = requests.get(
+            f"{APIFY_API_URL}/datasets/{dataset_id}/items",
+            headers={"Authorization": f"Bearer {APIFY_API_TOKEN}"}
+        )
+        dataset_response.raise_for_status()
+        dataset_items = dataset_response.json()
+
+        if not dataset_items:
+            logger.warning("לא נמצאו פריטים ב-Dataset")
+            return [], "לא נמצאו מבזקים ב-Dataset"
+
+        # עיבוד התוצאות
+        results = []
+        for item in dataset_items[:3]:  # עד 3 מבזקים
+            content = item.get('content', '')
+            soup = BeautifulSoup(content, 'xml')
             items = soup.select('item')[:3]
-            if not items:
-                logger.warning("לא נמצאו מבזקים ב-RSS של ערוץ 14")
-                logger.debug(f"Channel 14 RSS: {response.text[:500]}")
-                return [], "לא נמצאו מבזקים ב-RSS"
-            results = []
-            for item in items:
-                title = item.find('title').get_text(strip=True) if item.find('title') else 'ללא כותרת'
-                link = item.find('link').get_text(strip=True) if item.find('link') else None
-                pub_date = item.find('pubDate').get_text(strip=True) if item.find('pubDate') else 'ללא שעה'
+            for rss_item in items:
+                title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
+                link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
+                pub_date = rss_item.find('pubDate').get_text(strip=True) if rss_item.find('pubDate') else 'ללא שעה'
                 results.append({'time': pub_date, 'title': title, 'link': link})
-            logger.info(f"סקריפינג ערוץ 14 הצליח: {len(results)} מבזקים")
-            return results, None
-    except TimeoutError:
-        logger.error("סקרייפינג ערוץ 14 נכשל: לקח יותר מ-60 שניות")
-        return [], "לקח יותר מדי זמן"
+
+        logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
+        return results, None
+
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג ערוץ 14: {str(e)}")
-        return [], f"שגיאה בסקריפינג: {str(e)}"
+        logger.error(f"שגיאה בהפעלת Apify Actor: {str(e)}")
+        return [], f"שגיאה בשאיבה דרך Apify: {str(e)}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -343,7 +385,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = scrape_channel14()
+    channel14_news, channel14_error = await run_apify_actor()  # מפעיל את Apify באופן אוטומטי
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
@@ -418,7 +460,7 @@ def run_flask():
     app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
-    logger.info("Initializing bot with Heroku proxy...")
+    logger.info("Initializing bot...")
     bot_app.add_handler(CommandHandler("start", start))
     bot_app.add_handler(CommandHandler("latest", latest))
     bot_app.add_handler(CommandHandler("download", download))
