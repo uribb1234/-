@@ -107,6 +107,7 @@ def scrape_arutz7():
     except Exception as e:
         logger.error(f"שגיאה בערוץ 7: {e}")
         return []
+
 def scrape_walla():
     logger.debug("Scraping Walla...")
     try:
