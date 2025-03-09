@@ -522,11 +522,16 @@ def run_bot():
     logger.info("Added tv_news handler")
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
     logger.info("Added latest_news handler")
+    # יצירת event loop עבור ה-thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
         logger.info("Bot polling started successfully.")
     except Exception as e:
         logger.error(f"Error in run_polling: {e}")
+    finally:
+        loop.close()
 
 def run_flask():
     logger.info("Starting Flask server...")
