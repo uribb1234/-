@@ -544,14 +544,22 @@ def run_flask():
 if __name__ == '__main__':
     logger.info("Starting main process...")
     
-    # הרצת הבוט עם asyncio.run() שמנהל את ה-event loop
+    # יצירת event loop ידני והרצת הבוט
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
     try:
-        asyncio.run(run_bot())
+        loop.run_until_complete(run_bot())
     except KeyboardInterrupt:
         logger.info("Received shutdown signal, stopping bot...")
+        loop.run_until_complete(bot_app.shutdown())
     except Exception as e:
         logger.error(f"Error running bot: {str(e)}", exc_info=True)
     finally:
+        # סגירת ה-loop בצורה מסודרת
+        if not loop.is_closed():
+            loop.close()
+        
         # הפעלת Flask לאחר שהבוט סיים (או נכשל)
         flask_thread = threading.Thread(target=run_flask, daemon=True)
         logger.info("Starting Flask thread...")
