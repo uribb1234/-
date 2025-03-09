@@ -58,13 +58,6 @@ BASE_HEADERS = {
 }
 
 app = Flask(__name__)
-
-# נקודת קצה בסיסית כדי להגיב לבקשות מ-UptimeRobot
-@app.route('/')
-def home():
-    logger.info("Received GET request at /")
-    return "Bot is alive!"
-
 bot_app = Application.builder().token(TOKEN).build()
 
 @contextmanager
@@ -79,7 +72,6 @@ def timeout(seconds):
         signal.alarm(0)
 
 def scrape_ynet():
-    logger.debug("Scraping Ynet...")
     try:
         response = requests.get(NEWS_SITES['ynet'], headers=BASE_HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -89,7 +81,6 @@ def scrape_ynet():
         return []
 
 def scrape_arutz7():
-    logger.debug("Scraping Arutz 7...")
     try:
         response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS)
         logger.debug(f"Arutz 7 API response status: {response.status_code}")
@@ -108,7 +99,6 @@ def scrape_arutz7():
         return []
 
 def scrape_walla():
-    logger.debug("Scraping Walla...")
     try:
         response = requests.get(NEWS_SITES['walla'], headers=BASE_HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -130,7 +120,6 @@ def scrape_walla():
         return []
 
 def scrape_ynet_tech():
-    logger.debug("Scraping Ynet Tech...")
     try:
         response = requests.get(NEWS_SITES['ynet_tech'], headers=BASE_HEADERS, timeout=5)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -152,9 +141,9 @@ def scrape_ynet_tech():
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 def scrape_kan11():
-    logger.debug("Scraping Kan 11...")
     try:
         with timeout(60):  # מגביל ל-60 שניות
+            logger.debug("Starting Kan 11 scrape")
             response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, timeout=15)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -187,112 +176,88 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-# פונקציה לשאיבת תוצאות הריצה האחרונה של ה-Actor
+# פונקציה מעודכנת לשאיבת תוצאות הריצה האחרונה של ה-Actor
 async def run_apify_actor():
-    logger.debug("Running Apify Actor...")
-    max_retries = 3
-    retry_delay = 5  # עיכוב של 5 שניות בין ניסיונות
+    try:
+        logger.debug("Fetching the latest Apify Actor run...")
+        url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=1&desc=1"
+        headers = {
+            "Authorization": f"Bearer {APIFY_API_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        response = requests.get(url, headers=headers, timeout=30)
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch latest Apify Actor run: {response.status_code} - {response.text}")
+            response.raise_for_status()
+        run_data = response.json()
+        
+        if not run_data.get('data', {}).get('items'):
+            logger.error("No runs found for this Actor.")
+            return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
 
-    for attempt in range(max_retries):
-        try:
-            url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=2&desc=1"  # מבקש 2 ריצות
-            headers = {
-                "Authorization": f"Bearer {APIFY_API_TOKEN}",
-                "Content-Type": "application/json"
-            }
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code != 200:
-                logger.error(f"Failed to fetch latest Apify Actor run: {response.status_code} - {response.text}")
-                response.raise_for_status()
-            run_data = response.json()
-            
-            if not run_data.get('data', {}).get('items'):
-                logger.error("No runs found for this Actor.")
-                return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
+        latest_run = run_data['data']['items'][0]
+        run_id = latest_run['id']
+        status = latest_run['status']
+        logger.debug(f"Latest run ID: {run_id}, Status: {status}")
 
-            runs = run_data['data']['items']
-            latest_run = runs[0]
-            run_id = latest_run['id']
-            status = latest_run['status']
-            logger.debug(f"Latest run ID: {run_id}, Status: {status}")
+        if status != 'SUCCEEDED':
+            logger.error(f"Latest Actor run did not succeed. Status: {status}")
+            return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
 
-            if status == 'RUNNING' and len(runs) > 1:
-                logger.warning("Latest run is RUNNING, checking previous run...")
-                previous_run = runs[1]
-                if previous_run['status'] == 'SUCCEEDED':
-                    latest_run = previous_run
-                    status = 'SUCCEEDED'
-                    logger.info("Using previous successful run.")
-                else:
-                    if attempt < max_retries - 1:
-                        logger.info(f"Waiting {retry_delay} seconds before retrying...")
-                        time.sleep(retry_delay)
-                        continue
-                    else:
-                        logger.error("All runs failed or still running after retries.")
-                        return [], "כל הריצות נכשלו או עדיין רצות."
+        dataset_id = latest_run['defaultDatasetId']
+        if not dataset_id:
+            logger.error("No dataset ID found in the latest run.")
+            return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
 
-            if status != 'SUCCEEDED':
-                logger.error(f"Latest Actor run did not succeed. Status: {status}")
-                return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
+        dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
+        dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
+        if dataset_response.status_code != 200:
+            logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
+            dataset_response.raise_for_status()
+        
+        dataset_items = dataset_response.json()
+        logger.debug(f"Dataset items: {json.dumps(dataset_items, ensure_ascii=False)[:2000]}... (truncated)")
+        if not dataset_items:
+            logger.warning("לא נמצאו פריטים ב-Dataset")
+            return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
 
-            dataset_id = latest_run['defaultDatasetId']
-            if not dataset_id:
-                logger.error("No dataset ID found in the latest run.")
-                return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
-
-            dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
-            dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
-            if dataset_response.status_code != 200:
-                logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
-                dataset_response.raise_for_status()
-            
-            dataset_items = dataset_response.json()
-            logger.debug(f"Dataset items: {json.dumps(dataset_items, ensure_ascii=False)[:2000]}... (truncated)")
-            if not dataset_items:
-                logger.warning("לא נמצאו פריטים ב-Dataset")
-                return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
-
-            results = []
-            for item in dataset_items[:3]:  # עד 3 פריטים
-                content = item.get('content', '')
-                logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")
-                if not content:
-                    logger.warning("Content is empty for this item")
-                    continue
-                
-                soup = BeautifulSoup(content, 'html.parser')
-                pre_content = soup.find('pre').text if soup.find('pre') else content
-                logger.debug(f"Cleaned pre content: {pre_content[:2000]}... (truncated)")
-                
-                rss_soup = BeautifulSoup(pre_content, 'lxml')
-                items = rss_soup.select('item')[:3]
-                if not items:
-                    logger.warning("לא נמצאו תגיות <item> ב-RSS")
-                    all_tags = [tag.name for tag in rss_soup.find_all()]
-                    logger.debug(f"כל התגיות שנמצאו ב-RSS: {all_tags}")
-                    logger.debug(f"Full RSS structure: {rss_soup.prettify()[:2000]}... (truncated)")
-                    continue
-
-                for rss_item in items:
-                    title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
-                    link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
-                    pub_date = rss_item.find('pubDate').get_text(strip=True) if rss_item.find('pubDate') else 'ללא שעה'
-                    results.append({'time': pub_date, 'title': title, 'link': link})
-
-            logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
-            return results, None
-
-        except Exception as e:
-            logger.error(f"שגיאה בשאיבת תוצאות ה-Actor מ-Apify: {str(e)}")
-            if attempt < max_retries - 1:
-                logger.info(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
+        results = []
+        for item in dataset_items[:3]:  # עד 3 פריטים
+            content = item.get('content', '')
+            logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")  # לוג של ה-content המקורי
+            if not content:
+                logger.warning("Content is empty for this item")
                 continue
-            return [], f"שגיאה בשאיבה דרך Apify לאחר {max_retries} ניסיונות: {str(e)}"
+            
+            # ניקוי התגיות החיצוניות (<html>, <body>, <pre>) וקבלת ה-RSS כטקסט נקי
+            soup = BeautifulSoup(content, 'html.parser')
+            pre_content = soup.find('pre').text if soup.find('pre') else content
+            logger.debug(f"Cleaned pre content: {pre_content[:2000]}... (truncated)")  # לוג של ה-content לאחר ניקוי
+            
+            # עיבוד ה-RSS כ-XML
+            rss_soup = BeautifulSoup(pre_content, 'lxml')
+            items = rss_soup.select('item')[:3]  # חיפוש תגיות <item> בתוך ה-RSS
+            if not items:
+                logger.warning("לא נמצאו תגיות <item> ב-RSS")
+                all_tags = [tag.name for tag in rss_soup.find_all()]
+                logger.debug(f"כל התגיות שנמצאו ב-RSS: {all_tags}")
+                logger.debug(f"Full RSS structure: {rss_soup.prettify()[:2000]}... (truncated)")
+                continue
+
+            for rss_item in items:
+                title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
+                link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
+                pub_date = rss_item.find('pubDate').get_text(strip=True) if rss_item.find('pubDate') else 'ללא שעה'
+                results.append({'time': pub_date, 'title': title, 'link': link})
+
+        logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
+        return results, None
+
+    except Exception as e:
+        logger.error(f"שגיאה בשאיבת תוצאות ה-Actor מ-Apify: {str(e)}")
+        return [], f"שגיאה בשאיבה דרך Apify: {str(e)}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received /start command")
     user_id = update.message.from_user.id
     chat = await context.bot.get_chat(user_id)
     username = chat.username
@@ -301,7 +266,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received /download command")
     user_id = update.message.from_user.id
     chat = await context.bot.get_chat(user_id)
     username = chat.username
@@ -331,7 +295,6 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"שגיאה בהורדה: {str(e)}")
 
 async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received /latest command")
     user_id = update.message.from_user.id
     chat = await context.bot.get_chat(user_id)
     username = chat.username
@@ -366,7 +329,6 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received sports_news callback")
     query = update.callback_query
     user_id = query.from_user.id
     chat = await context.bot.get_chat(user_id)
@@ -406,7 +368,6 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received tech_news callback")
     query = update.callback_query
     user_id = query.from_user.id
     chat = await context.bot.get_chat(user_id)
@@ -414,7 +375,7 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tech_news, username: {username}")
     log_interaction(user_id, "tech_news", username)
     await query.answer()
-    await query.message.reply_text("מחפש חדשות טכנולוגיה...")
+    await update.message.reply_text("מחפש חדשות טכנולוגיה...")
     
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
     message = "**Ynet Tech**\n"
@@ -429,7 +390,6 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received tv_news callback")
     query = update.callback_query
     user_id = query.from_user.id
     chat = await context.bot.get_chat(user_id)
@@ -440,7 +400,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = await run_apify_actor()
+    channel14_news, channel14_error = await run_apify_actor()  # שואב את תוצאות הריצה האחרונה
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
@@ -470,7 +430,6 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    logger.info("Received latest_news callback")
     query = update.callback_query
     user_id = query.from_user.id
     chat = await context.bot.get_chat(user_id)
@@ -506,67 +465,25 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
-async def test_telegram_connection():
-    logger.info("Testing Telegram connection...")
-    try:
-        bot = bot_app.bot
-        await bot.get_me()
-        logger.info("Successfully connected to Telegram!")
-    except Exception as e:
-        logger.error(f"Failed to connect to Telegram: {str(e)}")
-
-async def run_bot():
-    logger.info("Starting bot polling...")
+def run_bot():
     bot_app.add_handler(CommandHandler("start", start))
-    logger.info("Added /start handler")
     bot_app.add_handler(CommandHandler("download", download))
-    logger.info("Added /download handler")
     bot_app.add_handler(CommandHandler("latest", latest))
-    logger.info("Added /latest handler")
     bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='^sports_news$'))
-    logger.info("Added sports_news handler")
     bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='^tech_news$'))
-    logger.info("Added tech_news handler")
     bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='^tv_news$'))
-    logger.info("Added tv_news handler")
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
-    logger.info("Added latest_news handler")
-    
-    await test_telegram_connection()
-    logger.info("Attempting to start polling...")
-    await bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
-    logger.info("Bot polling started successfully.")
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 def run_flask():
-    logger.info("Starting Flask server...")
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
 
 if __name__ == '__main__':
-    logger.info("Starting main process...")
+    bot_thread = threading.Thread(target=run_bot)
+    flask_thread = threading.Thread(target=run_flask)
     
-    # יצירת event loop ידני עבור ה-main thread
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    bot_thread.start()
+    flask_thread.start()
     
-    # הרצת הבוט ב-main thread עם event loop מוגדר
-    logger.info("Running bot in main thread...")
-    try:
-        loop.run_until_complete(run_bot())
-    except KeyboardInterrupt:
-        logger.info("Received shutdown signal, stopping bot...")
-        loop.run_until_complete(bot_app.shutdown())
-    except Exception as e:
-        logger.error(f"Error running bot: {str(e)}", exc_info=True)
-    finally:
-        # הרצת Flask לאחר שהבוט סיים (או נכשל)
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        logger.info("Starting Flask thread...")
-        flask_thread.start()
-        
-        # שמירה על התוכנית חיה כדי ש-Flask ימשיך לרוץ
-        try:
-            flask_thread.join()
-        except KeyboardInterrupt:
-            logger.info("Shutting down Flask thread...")
-    
-    logger.info("Application shutdown complete.")
+    bot_thread.join()
+    flask_thread.join()
