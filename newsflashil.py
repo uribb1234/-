@@ -3,9 +3,8 @@ import time
 import requests
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask
-import threading
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, ApplicationBuilder
+from flask import Flask, request
 import logging
 import asyncio
 import json
@@ -61,13 +60,22 @@ BASE_HEADERS = {
 
 app = Flask(__name__)
 
-# נקודת קצה בסיסית כדי להגיב לבקשות מ-UptimeRobot
+# נקודת קצה בסיסית עבור UptimeRobot
 @app.route('/')
 def home():
     logger.info("Received GET request at /")
     return "Bot is alive!"
 
-bot_app = Application.builder().token(TOKEN).build()
+# נקודת קצה עבור Webhook של Telegram
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    logger.info("Received webhook update from Telegram")
+    update = Update.de_json(request.get_json(), bot_app.bot)
+    await bot_app.process_update(update)
+    return 'OK'
+
+# יצירת אפליקציית הבוט עם Webhook
+bot_app = ApplicationBuilder().token(TOKEN).build()
 
 @contextmanager
 def timeout(seconds):
@@ -482,29 +490,26 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.callback_query.message.edit_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
-def run_bot():
-    logger.info("Starting bot...")
-    bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(CommandHandler("download", download))
-    bot_app.add_handler(CommandHandler("latest", latest))
-    bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='^sports_news$'))
-    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='^tech_news$'))
-    bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='^tv_news$'))
-    
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
-    except Exception as e:
-        logger.error(f"שגיאה בהרצת הבוט: {e}")
-    finally:
-        loop.close()
+# הוספת ה-Handlers
+bot_app.add_handler(CommandHandler("start", start))
+bot_app.add_handler(CommandHandler("download", download))
+bot_app.add_handler(CommandHandler("latest", latest))
+bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='^sports_news$'))
+bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='^tech_news$'))
+bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='^tv_news$'))
 
-def run_flask():
+# הגדרת Webhook
+WEBHOOK_URL = "https://urinews.onrender.com/webhook"  # ודא שה-URL תואם ל-Domain שלך
+async def set_webhook():
+    logger.info(f"Setting webhook to {WEBHOOK_URL}")
+    await bot_app.bot.set_webhook(url=WEBHOOK_URL)
+    logger.info("Webhook set successfully")
+
+# הפעלת הבוט וה-Flask יחד
+async def main():
+    await set_webhook()
     logger.info("Starting Flask server...")
     app.run(host='0.0.0.0', port=5000)
 
 if __name__ == "__main__":
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    run_flask()
+    asyncio.run(main())
