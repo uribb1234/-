@@ -52,9 +52,11 @@ BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9,he;q=0.8',
-    'Referer': 'https://www.google.com/',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'DNT': '1',
     'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1'
+    'Upgrade-Insecure-Requests': '1',
+    'Referer': 'https://www.google.com/'
 }
 
 app = Flask(__name__)
@@ -157,11 +159,14 @@ def scrape_kan11():
         with timeout(60):  # מגביל ל-60 שניות
             response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, timeout=15)
             response.raise_for_status()
+            time.sleep(2)  # המתנה קצרה כדי להפחית חשד
             soup = BeautifulSoup(response.text, 'html.parser')
             items = soup.select('div.accordion-item.f-news__item')[:3]
             if not items:
                 logger.warning("לא נמצאו מבזקים ב-URL הראשי, מנסה URL חלופי")
                 response = requests.get(NEWS_SITES['kan11_alt'], headers=BASE_HEADERS, timeout=15)
+                response.raise_for_status()
+                time.sleep(2)
                 soup = BeautifulSoup(response.text, 'html.parser')
                 items = soup.select('div.accordion-item.f-news__item')[:3]
                 if not items:
@@ -180,6 +185,9 @@ def scrape_kan11():
                 results.append({'time': article_time, 'title': title, 'link': link})
             logger.info(f"סקריפינג כאן 11 הצליח: {len(results)} מבזקים")
             return results, None
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"שגיאה ב-HTTP: {e}")
+        return [], f"שגיאה בשרת: {e}"
     except TimeoutError:
         logger.error("סקרייפינג כאן 11 נכשל: לקח יותר מ-60 שניות")
         return [], "לקח יותר מדי זמן"
@@ -187,7 +195,6 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-# פונקציה לשאיבת תוצאות הריצה האחרונה של ה-Actor
 async def run_apify_actor():
     logger.debug("Running Apify Actor...")
     max_retries = 3
@@ -275,10 +282,50 @@ async def run_apify_actor():
                     continue
 
                 for rss_item in items:
-                    title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
-                    link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
-                    pub_date = rss_item.find('pubDate').get_text(strip=True) if rss_item.find('pubDate') else 'ללא שעה'
+                    title = rss_item.find('title')
+                    title = title.get_text(strip=True) if title else 'ללא כותרת'
+                    
+                    # חילוץ הקישור מתגית <link>
+                    link = None
+                    link_tag = rss_item.find('link')
+                    if link_tag and link_tag.string:
+                        link = link_tag.string.strip()
+                    logger.debug(f"Extracted link for item '{title}': {link}")
+                    
+                    # אם לא נמצא קישור בתגית <link>, ננסה את <guid>
+                    if not link:
+                        guid_tag = rss_item.find('guid')
+                        if guid_tag and guid_tag.string:
+                            link = guid_tag.string.strip()
+                        logger.debug(f"Extracted link from guid for item '{title}': {link}")
+                    
+                    # חילוץ זמן מתגית <pubDate>
+                    pub_date = rss_item.find('pubdate')
+                    if pub_date and pub_date.string:
+                        pub_date = pub_date.string.strip()
+                        try:
+                            pub_date = pub_date.split('+')[0].strip()
+                            pub_date = ' '.join(pub_date.split()[1:4])
+                        except Exception as e:
+                            logger.debug(f"Error formatting pubDate for item '{title}': {e}")
+                    else:
+                        pub_date = 'ללא שעה'
+                    
+                    # אם לא נמצא זמן ב-<pubDate>, ננסה תגית חלופית כמו <dc:date>
+                    if pub_date == 'ללא שעה':
+                        date_tag = rss_item.find('dc:date')
+                        pub_date = date_tag.string.strip() if date_tag and date_tag.string else 'ללא שעה'
+                        if pub_date != 'ללא שעה':
+                            try:
+                                pub_date = pub_date.split('T')[0] + ' ' + pub_date.split('T')[1].split('+')[0]
+                            except Exception as e:
+                                logger.debug(f"Error formatting dc:date for item '{title}': {e}")
+                    
                     results.append({'time': pub_date, 'title': title, 'link': link})
+
+            if not results:
+                logger.warning("לא נמצאו מבזקים תקינים לאחר עיבוד")
+                return [], "לא נמצאו מבזקים תקינים לאחר עיבוד"
 
             logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
             return results, None
@@ -349,7 +396,8 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if articles:
             for idx, article in enumerate(articles[:3], 1):
                 if 'time' in article:
-                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                    full_text = f"{article['time']} - {article['title']}"
+                    message += f"{idx}. [{full_text}]({article['link']})\n"
                 else:
                     message += f"{idx}. [{article['title']}]({article['link']})\n"
         else:
@@ -420,7 +468,8 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = "**Ynet Tech**\n"
     if ynet_tech_news:
         for idx, article in enumerate(ynet_tech_news[:3], 1):
-            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            full_text = f"{article['time']} - {article['title']}"
+            message += f"{idx}. [{full_text}]({article['link']})\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {ynet_tech_error}\n"
     
@@ -446,7 +495,8 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if kan11_news:
         for idx, article in enumerate(kan11_news[:3], 1):
             if article['link']:
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                full_text = f"{article['time']} - {article['title']}"
+                message += f"{idx}. [{full_text}]({article['link']})\n"
             else:
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
@@ -456,7 +506,8 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if channel14_news:
         for idx, article in enumerate(channel14_news[:3], 1):
             if article['link']:
-                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                full_text = f"{article['time']} - {article['title']}"
+                message += f"{idx}. [{full_text}]({article['link']})\n"
             else:
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
@@ -490,7 +541,8 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if articles:
             for idx, article in enumerate(articles[:3], 1):
                 if 'time' in article:
-                    message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+                    full_text = f"{article['time']} - {article['title']}"
+                    message += f"{idx}. [{full_text}]({article['link']})\n"
                 else:
                     message += f"{idx}. [{article['title']}]({article['link']})\n"
         else:
@@ -537,7 +589,6 @@ def run_bot():
     loop.run_until_complete(test_telegram_connection())
     
     logger.info("Attempting to start polling...")
-    # הפעלת polling ישירות ב-main thread
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Bot polling started successfully.")
 
@@ -556,5 +607,3 @@ if __name__ == '__main__':
     
     # הפעלת הבוט ב-main thread
     run_bot()
-    
-    # שמירה על התוכנית חיה לא תידרש כאן כי run_polling() יחזיק את ה-main thread
