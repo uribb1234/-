@@ -532,10 +532,18 @@ def run_bot():
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
     logger.info("Added latest_news handler")
     
-    asyncio.run(test_telegram_connection())
+    # יצירת event loop עבור ה-Thread הנוכחי
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # בדיקת חיבור לטלגרם
+    loop.run_until_complete(test_telegram_connection())
+    
     logger.info("Attempting to start polling...")
-    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # הפעלת polling עם ה-loop הנוכחי
+    loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
     logger.info("Bot polling started successfully.")
+    loop.close()
 
 def run_flask():
     logger.info("Starting Flask server...")
