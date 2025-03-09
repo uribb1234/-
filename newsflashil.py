@@ -1,9 +1,6 @@
 import os
 import time
 import requests
-import json
-import gzip
-from io import BytesIO
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -11,6 +8,10 @@ from flask import Flask
 import threading
 import logging
 import asyncio
+import json
+import gzip
+from data_logger import log_interaction, save_to_excel
+from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import signal
 from contextlib import contextmanager
 
@@ -380,7 +381,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await context.bot.get_chat(user_id)
     username = chat.username
     logger.debug(f"User {user_id} sent /start, username: {username}")
-    # log_interaction(user_id, "/start", username)  # יש להוסיף את הפונקציה הזו אם היא מוגדרת
+    log_interaction(user_id, "/start", username)
     await update.message.reply_text("ברוך הבא! השתמש ב-/latest למבזקים.")
 
 async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -389,7 +390,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await context.bot.get_chat(user_id)
     username = chat.username
     logger.debug(f"User {user_id} sent /download, username: {username}")
-    # log_interaction(user_id, "/download", username)  # יש להוסיף את הפונקציה הזו אם היא מוגדרת
+    log_interaction(user_id, "/download", username)
     SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
 
     if not SECRET_PASSWORD:
@@ -401,7 +402,7 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        filename = "bot_usage.xlsx"  # יש להוסיף את save_to_excel() אם היא מוגדרת
+        filename = save_to_excel()
         if not os.path.exists(filename):
             await update.message.reply_text("שגיאה: הקובץ לא נוצר!")
             return
@@ -419,7 +420,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = await context.bot.get_chat(user_id)
     username = chat.username
     logger.debug(f"User {user_id} sent /latest, username: {username}")
-    # log_interaction(user_id, "/latest", username)  # יש להוסיף את הפונקציה הזו אם היא מוגדרת
+    log_interaction(user_id, "/latest", username)
     await update.message.reply_text("מחפש מבזקים...")
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
@@ -451,56 +452,98 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info("Received sports_news callback")
-    query = update.callback_query
-    user_id = query.from_user.id
+    user_id = update.callback_query.from_user.id
     chat = await context.bot.get_chat(user_id)
     username = chat.username
-    logger.debug(f"User {user_id} triggered sports_news, username: {username}")
-    # log_interaction(user_id, "sports_news", username)  # יש להוסיף את הפונקציה הזו אם היא מוגדרת
-    await query.answer()
-    await query.message.reply_text("מחפש מבזקי ספורט...")
-    
-    # sport5_news, sport5_error = scrape_sport5()  # יש להוסיף את הפונקציה הזו
-    # sport1_news, sport1_error = scrape_sport1()  # יש להוסיף את הפונקציה הזו
-    # one_news, one_error = scrape_one()  # יש להוסיף את הפונקציה הזו
-    sport5_news, sport5_error = [], "פונקציה לא מוגדרת"
-    sport1_news, sport1_error = [], "פונקציה לא מוגדרת"
-    one_news, one_error = [], "פונקציה לא מוגדרת"
-    
-    message = "**ספורט 5**\n"
-    if sport5_news:
-        for idx, article in enumerate(sport5_news[:3], 1):
-            message += f"{idx}. [{article['title']}]({article['link']})\n"
-    else:
-        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport5_error}\n"
-    
-    message += "\n**ספורט 1**\n"
-    if sport1_news:
-        for idx, article in enumerate(sport1_news[:3], 1):
-            message += f"{idx}. [{article['title']}]({article['link']})\n"
-    else:
-        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport1_error}\n"
-    
-    message += "\n**ONE**\n"
-    if one_news:
-        for idx, article in enumerate(one_news[:3], 1):
-            message += f"{idx}. [{article['title']}]({article['link']})\n"
-    else:
-        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {one_error}\n"
-    
-    await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
+    logger.debug(f"User {user_id} clicked sports_news, username: {username}")
+    log_interaction(user_id, "sports_news", username)
+    sport5_news = scrape_sport5()
+    sport1_news = scrape_sport1()
+    one_news = scrape_one()
 
-# הגדרת handlers
-bot_app.add_handler(CommandHandler("start", start))
-bot_app.add_handler(CommandHandler("latest", latest))
-bot_app.add_handler(CommandHandler("download", download))
-bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
+    message = "⚽ **חדשות ספורט** ⚽\n\n"
+    news_sources = {'Sport5': sport5_news, 'Sport1': sport1_news, 'One': one_news}
+    for source, articles in news_sources.items():
+        message += f"**{source}:**\n"
+        if articles:
+            for idx, article in enumerate(articles[:3], 1):
+                message += f"{idx}. [{article['title']}]({article['link']})\n"
+        else:
+            message += "לא ניתן לטעון כרגע\n"
+        message += "\n"
+    
+    await update.callback_query.message.edit_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
 
-# הרצת הבוט והשרת Flask
+async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Received tech_news callback")
+    user_id = update.callback_query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} clicked tech_news, username: {username}")
+    log_interaction(user_id, "tech_news", username)
+    ynet_tech_news, error = scrape_ynet_tech()
+    if error:
+        await update.callback_query.message.edit_text(f"שגיאה: {error}")
+        return
+    
+    message = "💻 **חדשות טכנולוגיה** 💻\n\n"
+    message += "**Ynet Tech:**\n"
+    if ynet_tech_news:
+        for idx, article in enumerate(ynet_tech_news[:3], 1):
+            full_text = f"{article['time']} - {article['title']}"
+            message += f"{idx}. [{full_text}]({article['link']})\n"
+    else:
+        message += "לא ניתן לטעון כרגע\n"
+    
+    await update.callback_query.message.edit_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
+
+async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.info("Received tv_news callback")
+    user_id = update.callback_query.from_user.id
+    chat = await context.bot.get_chat(user_id)
+    username = chat.username
+    logger.debug(f"User {user_id} clicked tv_news, username: {username}")
+    log_interaction(user_id, "tv_news", username)
+    kan11_news, error = scrape_kan11()
+    channel14_news, error_apify = await run_apify_actor()
+
+    message = "📺 **חדשות מערוצי טלוויזיה** 📺\n\n"
+    news_sources = {'Kan 11': kan11_news, 'ערוץ 14': channel14_news}
+    for source, articles in news_sources.items():
+        message += f"**{source}:**\n"
+        if articles:
+            for idx, article in enumerate(articles[:3], 1):
+                full_text = f"{article['time']} - {article['title']}"
+                message += f"{idx}. [{full_text}]({article['link']})\n"
+        else:
+            message += "לא ניתן לטעון כרגע\n"
+        message += "\n"
+    
+    await update.callback_query.message.edit_text(text=message, parse_mode='Markdown', disable_web_page_preview=True)
+
+def run_bot():
+    logger.info("Starting bot...")
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(CommandHandler("download", download))
+    bot_app.add_handler(CommandHandler("latest", latest))
+    bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='^sports_news$'))
+    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='^tech_news$'))
+    bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='^tv_news$'))
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
+    except Exception as e:
+        logger.error(f"שגיאה בהרצת הבוט: {e}")
+    finally:
+        loop.close()
+
 def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+    logger.info("Starting Flask server...")
+    app.run(host='0.0.0.0', port=5000)
 
-if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-    bot_app.run_polling()
+if __name__ == "__main__":
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    run_flask()
