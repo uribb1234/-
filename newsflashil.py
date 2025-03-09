@@ -515,7 +515,7 @@ async def test_telegram_connection():
     except Exception as e:
         logger.error(f"Failed to connect to Telegram: {str(e)}")
 
-async def run_bot():
+def run_bot():
     logger.info("Starting bot polling...")
     bot_app.add_handler(CommandHandler("start", start))
     logger.info("Added /start handler")
@@ -532,9 +532,9 @@ async def run_bot():
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
     logger.info("Added latest_news handler")
     
-    await test_telegram_connection()
+    asyncio.run(test_telegram_connection())
     logger.info("Attempting to start polling...")
-    await bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Bot polling started successfully.")
 
 def run_flask():
@@ -544,32 +544,20 @@ def run_flask():
 if __name__ == '__main__':
     logger.info("Starting main process...")
     
-    # יצירת event loop ידני והרצת הבוט
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # הרצת הבוט וה-Flask במקביל
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     
+    logger.info("Starting bot thread...")
+    bot_thread.start()
+    logger.info("Starting Flask thread...")
+    flask_thread.start()
+    
+    # שמירה על התוכנית חיה כדי ש-Flask ימשיך לרוץ
     try:
-        loop.run_until_complete(run_bot())
+        while True:
+            time.sleep(1)  # שומר את התוכנית פעילה
     except KeyboardInterrupt:
-        logger.info("Received shutdown signal, stopping bot...")
-        loop.run_until_complete(bot_app.shutdown())
-    except Exception as e:
-        logger.error(f"Error running bot: {str(e)}", exc_info=True)
-    finally:
-        # סגירת ה-loop בצורה מסודרת
-        if not loop.is_closed():
-            loop.close()
-        
-        # הפעלת Flask לאחר שהבוט סיים (או נכשל)
-        flask_thread = threading.Thread(target=run_flask, daemon=True)
-        logger.info("Starting Flask thread...")
-        flask_thread.start()
-        
-        # שמירה על התוכנית חיה כדי ש-Flask ימשיך לרוץ
-        try:
-            while True:
-                time.sleep(1)  # שומר את התוכנית פעילה
-        except KeyboardInterrupt:
-            logger.info("Shutting down Flask thread...")
+        logger.info("Shutting down threads...")
     
     logger.info("Application shutdown complete.")
