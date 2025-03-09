@@ -3,7 +3,6 @@ import time
 import requests
 import json
 import gzip
-import brotli
 from io import BytesIO
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -110,31 +109,15 @@ def scrape_arutz7():
             logger.error("תגובה ריקה מה-API של ערוץ 7")
             return []
 
-        # טיפול בדחיסה לפי הכותרת Content-Encoding
+        # ניסיון לפענח כ-gzip
         content = response.content
-        encoding = response.headers.get('Content-Encoding', '').lower()
-        
-        if encoding == 'br':
-            logger.debug("תגובה דחוסה ב-Brotli, מפענח...")
-            try:
-                decompressed_content = brotli.decompress(content)
-                data = json.loads(decompressed_content.decode('utf-8'))
-                logger.debug("פענוח Brotli הצליח!")
-            except brotli.error as br_err:
-                logger.error(f"שגיאה בפענוח Brotli: {br_err}. תגובה גולמית: {repr(content[:500])}")
-                return []
-        elif encoding == 'gzip':
-            logger.debug("תגובה דחוסה ב-gzip, מפענח...")
-            try:
-                decompressed_content = gzip.decompress(content)
-                data = json.loads(decompressed_content.decode('utf-8'))
-                logger.debug("פענוח gzip הצליח!")
-            except gzip.BadGzipFile as gzip_err:
-                logger.error(f"שגיאה בפענוח gzip: {gzip_err}. תגובה גולמית: {repr(content[:500])}")
-                return []
-        else:
-            # ניסיון לפרק כ-JSON רגיל אם אין דחיסה
-            logger.debug("אין דחיסה מזוהה, מנסה כ-JSON רגיל...")
+        try:
+            logger.debug("מנסה לפענח כ-gzip...")
+            decompressed_content = gzip.decompress(content)
+            data = json.loads(decompressed_content.decode('utf-8'))
+            logger.debug("פענוח gzip הצליח!")
+        except (gzip.BadGzipFile, ValueError) as gzip_err:
+            logger.debug(f"פענוח gzip נכשל: {gzip_err}. מנסה כ-JSON רגיל...")
             try:
                 data = response.json()
             except json.JSONDecodeError as json_err:
