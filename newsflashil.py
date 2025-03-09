@@ -93,10 +93,11 @@ def scrape_ynet():
 def scrape_arutz7():
     logger.debug("Scraping Arutz 7...")
     try:
-        # הוספת timeout והדפסת פרטי הבקשה
+        # שליחת הבקשה עם timeout
         response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS, timeout=10)
         logger.debug(f"Arutz 7 API response status: {response.status_code}")
-        logger.debug(f"Raw response content: {response.text[:500]}... (truncated)")  # הדפסת התגובה הגולמית עד 500 תווים
+        logger.debug(f"Response headers: {response.headers}")
+        logger.debug(f"Raw response content (first 500 chars): {response.text[:500]}... (truncated)")
 
         # בדיקת קוד סטטוס
         if response.status_code != 200:
@@ -104,16 +105,27 @@ def scrape_arutz7():
             return []
 
         # בדיקה אם התגובה ריקה
-        if not response.text.strip():
+        if not response.content:
             logger.error("תגובה ריקה מה-API של ערוץ 7")
             return []
 
-        # ניסיון לפרק את ה-JSON
-        try:
-            data = response.json()
-        except json.JSONDecodeError as json_err:
-            logger.error(f"שגיאה בפריקת JSON: {json_err}. תגובה גולמית: {response.text}")
-            return []
+        # טיפול בדחיסה ידנית אם נדרש
+        content = response.content  # גישה לנתונים הבינאריים
+        if 'Content-Encoding' in response.headers and response.headers['Content-Encoding'] == 'gzip':
+            logger.debug("תגובה דחוסה ב-gzip, מפענח ידנית...")
+            try:
+                content = gzip.decompress(content)
+                data = json.loads(content.decode('utf-8'))
+            except Exception as decompress_err:
+                logger.error(f"שגיאה בפענוח gzip או JSON: {decompress_err}. תגובה גולמית: {content[:500]}")
+                return []
+        else:
+            # ניסיון לפרק את ה-JSON ישירות
+            try:
+                data = response.json()
+            except json.JSONDecodeError as json_err:
+                logger.error(f"שגיאה בפריקת JSON: {json_err}. תגובה גולמית: {response.text}")
+                return []
 
         # בדיקת מבנה הנתונים
         items = data.get('Items', []) if isinstance(data, dict) and 'Items' in data else data
@@ -121,7 +133,7 @@ def scrape_arutz7():
             logger.warning("לא נמצאו פריטים בתגובת ה-API")
             return []
 
-        # עיבוד הפריטים כרגיל
+        # עיבוד הפריטים
         return [
             {
                 'time': item.get('time', item.get('itemDate', "ללא שעה")[:16].replace('T', ' ')),
@@ -135,7 +147,6 @@ def scrape_arutz7():
     except Exception as e:
         logger.error(f"שגיאה לא צפויה בערוץ 7: {e}")
         return []
-
 def scrape_walla():
     logger.debug("Scraping Walla...")
     try:
