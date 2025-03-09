@@ -218,25 +218,35 @@ async def run_apify_actor():
             logger.error("No dataset ID found in the latest run.")
             return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
 
-        # שליפת הנתונים מה-Dataset
+        # שליפת הנתונים מה-Dataset בפורמט JSON (כדי לקבל את ה-content)
         dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
         dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
         if dataset_response.status_code != 200:
             logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
             dataset_response.raise_for_status()
+        
+        # קבלת הנתונים כ-JSON
         dataset_items = dataset_response.json()
-
         if not dataset_items:
             logger.warning("לא נמצאו פריטים ב-Dataset")
             return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
 
-        # עיבוד התוצאות עם פארסר lxml במקום xml
+        # עיבוד ה-content כ-XML
         results = []
-        for item in dataset_items[:3]:  # עד 3 מבזקים
+        for item in dataset_items[:3]:  # עד 3 פריטים
             content = item.get('content', '')
-            # שימוש ב-lxml כפארסר במקום xml
+            logger.debug(f"Processing dataset item content: {content[:1000]}... (truncated)")  # לוג של ה-content
+            if not content:
+                logger.warning("Content is empty for this item")
+                continue
+            
+            # עיבוד ה-content כ-XML נפרד
             soup = BeautifulSoup(content, 'lxml')
-            items = soup.select('item')[:3]
+            items = soup.select('item')[:3]  # חיפוש תגיות <item> בתוך ה-content
+            if not items:
+                logger.warning("לא נמצאו תגיות <item> ב-content")
+                continue
+
             for rss_item in items:
                 title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
                 link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
@@ -368,7 +378,7 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tech_news, username: {username}")
     log_interaction(user_id, "tech_news", username)
     await query.answer()
-    await query.message.reply_text("מחפש חדשות טכנולוגיה...")
+    await update.message.reply_text("מחפש חדשות טכנולוגיה...")
     
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
     message = "**Ynet Tech**\n"
