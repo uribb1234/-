@@ -93,11 +93,35 @@ def scrape_ynet():
 def scrape_arutz7():
     logger.debug("Scraping Arutz 7...")
     try:
-        response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS)
+        # הוספת timeout והדפסת פרטי הבקשה
+        response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS, timeout=10)
         logger.debug(f"Arutz 7 API response status: {response.status_code}")
-        response.raise_for_status()
-        data = response.json()
-        items = data.get('Items', []) if 'Items' in data else data
+        logger.debug(f"Raw response content: {response.text[:500]}... (truncated)")  # הדפסת התגובה הגולמית עד 500 תווים
+
+        # בדיקת קוד סטטוס
+        if response.status_code != 200:
+            logger.error(f"קוד סטטוס לא תקין: {response.status_code}. תגובה: {response.text}")
+            return []
+
+        # בדיקה אם התגובה ריקה
+        if not response.text.strip():
+            logger.error("תגובה ריקה מה-API של ערוץ 7")
+            return []
+
+        # ניסיון לפרק את ה-JSON
+        try:
+            data = response.json()
+        except json.JSONDecodeError as json_err:
+            logger.error(f"שגיאה בפריקת JSON: {json_err}. תגובה גולמית: {response.text}")
+            return []
+
+        # בדיקת מבנה הנתונים
+        items = data.get('Items', []) if isinstance(data, dict) and 'Items' in data else data
+        if not items:
+            logger.warning("לא נמצאו פריטים בתגובת ה-API")
+            return []
+
+        # עיבוד הפריטים כרגיל
         return [
             {
                 'time': item.get('time', item.get('itemDate', "ללא שעה")[:16].replace('T', ' ')),
@@ -105,8 +129,11 @@ def scrape_arutz7():
                 'link': item.get('shotedLink', item.get('link', '#'))
             } for item in items[:3]
         ]
+    except requests.exceptions.RequestException as req_err:
+        logger.error(f"שגיאה בבקשה ל-API של ערוץ 7: {req_err}")
+        return []
     except Exception as e:
-        logger.error(f"שגיאה בערוץ 7: {e}")
+        logger.error(f"שגיאה לא צפויה בערוץ 7: {e}")
         return []
 
 def scrape_walla():
