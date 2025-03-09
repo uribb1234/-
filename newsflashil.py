@@ -180,71 +180,68 @@ def scrape_kan11():
 async def run_apify_actor():
     try:
         logger.debug("Fetching the latest Apify Actor run...")
-        # כתובת ה-API לשאיבת הריצות של ה-Actor
         url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=1&desc=1"
-
-        # הגדרת הכותרות עם הטוקן (כולל Bearer)
         headers = {
             "Authorization": f"Bearer {APIFY_API_TOKEN}",
             "Content-Type": "application/json"
         }
-
-        # שליחת בקשה ל-API כדי לקבל את הריצה האחרונה
         response = requests.get(url, headers=headers, timeout=30)
         if response.status_code != 200:
             logger.error(f"Failed to fetch latest Apify Actor run: {response.status_code} - {response.text}")
             response.raise_for_status()
         run_data = response.json()
         
-        # בדיקה אם יש ריצות
         if not run_data.get('data', {}).get('items'):
             logger.error("No runs found for this Actor.")
             return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
 
-        # לקיחת הריצה האחרונה
         latest_run = run_data['data']['items'][0]
         run_id = latest_run['id']
         status = latest_run['status']
         logger.debug(f"Latest run ID: {run_id}, Status: {status}")
 
-        # בדיקה אם הריצה האחרונה הצליחה
         if status != 'SUCCEEDED':
             logger.error(f"Latest Actor run did not succeed. Status: {status}")
             return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
 
-        # שליפת ה-Dataset ID מהריצה האחרונה
         dataset_id = latest_run['defaultDatasetId']
         if not dataset_id:
             logger.error("No dataset ID found in the latest run.")
             return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
 
-        # שליפת הנתונים מה-Dataset בפורמט JSON (כדי לקבל את ה-content)
         dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
         dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
         if dataset_response.status_code != 200:
             logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
             dataset_response.raise_for_status()
         
-        # קבלת הנתונים כ-JSON
         dataset_items = dataset_response.json()
+        logger.debug(f"Dataset items: {json.dumps(dataset_items, ensure_ascii=False)[:2000]}... (truncated)")
         if not dataset_items:
             logger.warning("לא נמצאו פריטים ב-Dataset")
             return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
 
-        # עיבוד ה-content כ-XML
         results = []
         for item in dataset_items[:3]:  # עד 3 פריטים
             content = item.get('content', '')
-            logger.debug(f"Processing dataset item content: {content[:1000]}... (truncated)")  # לוג של ה-content
+            logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")  # לוג של ה-content המקורי
             if not content:
                 logger.warning("Content is empty for this item")
                 continue
             
-            # עיבוד ה-content כ-XML נפרד
-            soup = BeautifulSoup(content, 'lxml')
-            items = soup.select('item')[:3]  # חיפוש תגיות <item> בתוך ה-content
+            # ניקוי התגיות החיצוניות (<html>, <body>, <pre>) וקבלת ה-RSS כטקסט נקי
+            soup = BeautifulSoup(content, 'html.parser')
+            pre_content = soup.find('pre').text if soup.find('pre') else content
+            logger.debug(f"Cleaned pre content: {pre_content[:2000]}... (truncated)")  # לוג של ה-content לאחר ניקוי
+            
+            # עיבוד ה-RSS כ-XML
+            rss_soup = BeautifulSoup(pre_content, 'lxml')
+            items = rss_soup.select('item')[:3]  # חיפוש תגיות <item> בתוך ה-RSS
             if not items:
-                logger.warning("לא נמצאו תגיות <item> ב-content")
+                logger.warning("לא נמצאו תגיות <item> ב-RSS")
+                all_tags = [tag.name for tag in rss_soup.find_all()]
+                logger.debug(f"כל התגיות שנמצאו ב-RSS: {all_tags}")
+                logger.debug(f"Full RSS structure: {rss_soup.prettify()[:2000]}... (truncated)")
                 continue
 
             for rss_item in items:
@@ -465,31 +462,28 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
-@app.route('/')
-def home():
-    logger.debug("Flask server accessed")
-    return "Bot is alive!"
+def run_bot():
+    bot_app.add_handler(CommandHandler("start", start))
+    bot_app.add_handler(CommandHandler("download", download))
+    bot_app.add_handler(CommandHandler("latest", latest))
+    bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='^sports_news$'))
+    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='^tech_news$'))
+    bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='^tv_news$'))
+    bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 def run_flask():
-    port = int(os.environ.get("PORT", 10000))
-    logger.info(f"Starting Flask on port {port}")
-    app.run(host="0.0.0.0", port=port)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
 
-if __name__ == "__main__":
-    logger.info("Initializing bot...")
-    bot_app.add_handler(CommandHandler("start", start))
-    bot_app.add_handler(CommandHandler("latest", latest))
-    bot_app.add_handler(CommandHandler("download", download))
-    bot_app.add_handler(CallbackQueryHandler(sports_news, pattern='sports_news'))
-    bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))
-    bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
-    bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
-
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
+if __name__ == '__main__':
+    bot_thread = threading.Thread(target=run_bot)
+    flask_thread = threading.Thread(target=run_flask)
+    
+    bot_thread.start()
     flask_thread.start()
-
-    logger.info("Starting bot polling in main thread...")
-    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
-    logger.info("Bot polling started successfully")
+    
+    bot_thread.join()
+    flask_thread.join()
