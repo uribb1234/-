@@ -90,11 +90,10 @@ def scrape_ynet():
         logger.error(f"שגיאה ב-Ynet: {e}")
         return []
 
+
 def scrape_arutz7():
-    logger.debug("Scraping Arutz 7...")
     try:
-        response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS)
-        logger.debug(f"Arutz 7 API response status: {response.status_code}")
+        response = requests.get(NEWS_SITES['arutz7'], headers=HEADERS)
         response.raise_for_status()
         data = response.json()
         items = data.get('Items', []) if 'Items' in data else data
@@ -108,7 +107,6 @@ def scrape_arutz7():
     except Exception as e:
         logger.error(f"שגיאה בערוץ 7: {e}")
         return []
-
 def scrape_walla():
     logger.debug("Scraping Walla...")
     try:
