@@ -532,21 +532,14 @@ def run_bot():
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
     logger.info("Added latest_news handler")
     
-    # יצירת event loop עבור ה-thread
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
         # בדיקת חיבור לטלגרם
-        loop.run_until_complete(test_telegram_connection())
+        asyncio.run(test_telegram_connection())
         logger.info("Attempting to start polling...")
-        loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
+        asyncio.run(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
         logger.info("Bot polling started successfully.")
     except Exception as e:
         logger.error(f"Error in run_polling: {str(e)}", exc_info=True)
-    finally:
-        logger.info("Closing event loop...")
-        loop.close()
-        logger.info("Event loop closed.")
 
 def run_flask():
     logger.info("Starting Flask server...")
@@ -554,15 +547,16 @@ def run_flask():
 
 if __name__ == '__main__':
     logger.info("Starting main process...")
-    bot_thread = threading.Thread(target=run_bot)
-    flask_thread = threading.Thread(target=run_flask)
     
-    logger.info("Starting bot thread...")
-    bot_thread.start()
+    # הרצת Flask ב-Thread נפרד
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     logger.info("Starting Flask thread...")
     flask_thread.start()
     
-    logger.info("Waiting for threads to join...")
-    bot_thread.join()
-    flask_thread.join()
-    logger.info("All threads completed.")
+    # הרצת הבוט ב-main thread
+    logger.info("Running bot in main thread...")
+    run_bot()
+    
+    logger.info("Bot stopped, shutting down Flask thread...")
+    # אין צורך ב-join כי Flask הוא daemon thread וייסגר אוטומטית
+    logger.info("Application shutdown complete.")
