@@ -58,6 +58,12 @@ BASE_HEADERS = {
 }
 
 app = Flask(__name__)
+
+# נקודת קצה בסיסית כדי להגיב לבקשות מ-UptimeRobot
+@app.route('/')
+def home():
+    return "Bot is alive!"
+
 bot_app = Application.builder().token(TOKEN).build()
 
 @contextmanager
@@ -176,86 +182,109 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-# פונקציה מעודכנת לשאיבת תוצאות הריצה האחרונה של ה-Actor
+# פונקציה לשאיבת תוצאות הריצה האחרונה של ה-Actor
 async def run_apify_actor():
-    try:
-        logger.debug("Fetching the latest Apify Actor run...")
-        url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=1&desc=1"
-        headers = {
-            "Authorization": f"Bearer {APIFY_API_TOKEN}",
-            "Content-Type": "application/json"
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        if response.status_code != 200:
-            logger.error(f"Failed to fetch latest Apify Actor run: {response.status_code} - {response.text}")
-            response.raise_for_status()
-        run_data = response.json()
-        
-        if not run_data.get('data', {}).get('items'):
-            logger.error("No runs found for this Actor.")
-            return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
+    max_retries = 3
+    retry_delay = 5  # עיכוב של 5 שניות בין ניסיונות
 
-        latest_run = run_data['data']['items'][0]
-        run_id = latest_run['id']
-        status = latest_run['status']
-        logger.debug(f"Latest run ID: {run_id}, Status: {status}")
-
-        if status != 'SUCCEEDED':
-            logger.error(f"Latest Actor run did not succeed. Status: {status}")
-            return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
-
-        dataset_id = latest_run['defaultDatasetId']
-        if not dataset_id:
-            logger.error("No dataset ID found in the latest run.")
-            return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
-
-        dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
-        dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
-        if dataset_response.status_code != 200:
-            logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
-            dataset_response.raise_for_status()
-        
-        dataset_items = dataset_response.json()
-        logger.debug(f"Dataset items: {json.dumps(dataset_items, ensure_ascii=False)[:2000]}... (truncated)")
-        if not dataset_items:
-            logger.warning("לא נמצאו פריטים ב-Dataset")
-            return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
-
-        results = []
-        for item in dataset_items[:3]:  # עד 3 פריטים
-            content = item.get('content', '')
-            logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")  # לוג של ה-content המקורי
-            if not content:
-                logger.warning("Content is empty for this item")
-                continue
+    for attempt in range(max_retries):
+        try:
+            logger.debug(f"Fetching the latest Apify Actor run... Attempt {attempt + 1}/{max_retries}")
+            url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=2&desc=1"  # מבקש 2 ריצות
+            headers = {
+                "Authorization": f"Bearer {APIFY_API_TOKEN}",
+                "Content-Type": "application/json"
+            }
+            response = requests.get(url, headers=headers, timeout=30)
+            if response.status_code != 200:
+                logger.error(f"Failed to fetch latest Apify Actor run: {response.status_code} - {response.text}")
+                response.raise_for_status()
+            run_data = response.json()
             
-            # ניקוי התגיות החיצוניות (<html>, <body>, <pre>) וקבלת ה-RSS כטקסט נקי
-            soup = BeautifulSoup(content, 'html.parser')
-            pre_content = soup.find('pre').text if soup.find('pre') else content
-            logger.debug(f"Cleaned pre content: {pre_content[:2000]}... (truncated)")  # לוג של ה-content לאחר ניקוי
+            if not run_data.get('data', {}).get('items'):
+                logger.error("No runs found for this Actor.")
+                return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
+
+            runs = run_data['data']['items']
+            latest_run = runs[0]
+            run_id = latest_run['id']
+            status = latest_run['status']
+            logger.debug(f"Latest run ID: {run_id}, Status: {status}")
+
+            if status == 'RUNNING' and len(runs) > 1:
+                logger.warning("Latest run is RUNNING, checking previous run...")
+                previous_run = runs[1]
+                if previous_run['status'] == 'SUCCEEDED':
+                    latest_run = previous_run
+                    status = 'SUCCEEDED'
+                    logger.info("Using previous successful run.")
+                else:
+                    if attempt < max_retries - 1:
+                        logger.info(f"Waiting {retry_delay} seconds before retrying...")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        logger.error("All runs failed or still running after retries.")
+                        return [], "כל הריצות נכשלו או עדיין רצות."
+
+            if status != 'SUCCEEDED':
+                logger.error(f"Latest Actor run did not succeed. Status: {status}")
+                return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
+
+            dataset_id = latest_run['defaultDatasetId']
+            if not dataset_id:
+                logger.error("No dataset ID found in the latest run.")
+                return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
+
+            dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
+            dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
+            if dataset_response.status_code != 200:
+                logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
+                dataset_response.raise_for_status()
             
-            # עיבוד ה-RSS כ-XML
-            rss_soup = BeautifulSoup(pre_content, 'lxml')
-            items = rss_soup.select('item')[:3]  # חיפוש תגיות <item> בתוך ה-RSS
-            if not items:
-                logger.warning("לא נמצאו תגיות <item> ב-RSS")
-                all_tags = [tag.name for tag in rss_soup.find_all()]
-                logger.debug(f"כל התגיות שנמצאו ב-RSS: {all_tags}")
-                logger.debug(f"Full RSS structure: {rss_soup.prettify()[:2000]}... (truncated)")
+            dataset_items = dataset_response.json()
+            logger.debug(f"Dataset items: {json.dumps(dataset_items, ensure_ascii=False)[:2000]}... (truncated)")
+            if not dataset_items:
+                logger.warning("לא נמצאו פריטים ב-Dataset")
+                return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
+
+            results = []
+            for item in dataset_items[:3]:  # עד 3 פריטים
+                content = item.get('content', '')
+                logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")
+                if not content:
+                    logger.warning("Content is empty for this item")
+                    continue
+                
+                soup = BeautifulSoup(content, 'html.parser')
+                pre_content = soup.find('pre').text if soup.find('pre') else content
+                logger.debug(f"Cleaned pre content: {pre_content[:2000]}... (truncated)")
+                
+                rss_soup = BeautifulSoup(pre_content, 'lxml')
+                items = rss_soup.select('item')[:3]
+                if not items:
+                    logger.warning("לא נמצאו תגיות <item> ב-RSS")
+                    all_tags = [tag.name for tag in rss_soup.find_all()]
+                    logger.debug(f"כל התגיות שנמצאו ב-RSS: {all_tags}")
+                    logger.debug(f"Full RSS structure: {rss_soup.prettify()[:2000]}... (truncated)")
+                    continue
+
+                for rss_item in items:
+                    title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
+                    link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
+                    pub_date = rss_item.find('pubDate').get_text(strip=True) if rss_item.find('pubDate') else 'ללא שעה'
+                    results.append({'time': pub_date, 'title': title, 'link': link})
+
+            logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
+            return results, None
+
+        except Exception as e:
+            logger.error(f"שגיאה בשאיבת תוצאות ה-Actor מ-Apify: {str(e)}")
+            if attempt < max_retries - 1:
+                logger.info(f"Retrying in {retry_delay} seconds...")
+                time.sleep(retry_delay)
                 continue
-
-            for rss_item in items:
-                title = rss_item.find('title').get_text(strip=True) if rss_item.find('title') else 'ללא כותרת'
-                link = rss_item.find('link').get_text(strip=True) if rss_item.find('link') else None
-                pub_date = rss_item.find('pubDate').get_text(strip=True) if rss_item.find('pubDate') else 'ללא שעה'
-                results.append({'time': pub_date, 'title': title, 'link': link})
-
-        logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
-        return results, None
-
-    except Exception as e:
-        logger.error(f"שגיאה בשאיבת תוצאות ה-Actor מ-Apify: {str(e)}")
-        return [], f"שגיאה בשאיבה דרך Apify: {str(e)}"
+            return [], f"שגיאה בשאיבה דרך Apify לאחר {max_retries} ניסיונות: {str(e)}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
@@ -400,7 +429,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = await run_apify_actor()  # שואב את תוצאות הריצה האחרונה
+    channel14_news, channel14_error = await run_apify_actor()
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
