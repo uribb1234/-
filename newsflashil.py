@@ -66,12 +66,12 @@ def home():
     logger.info("Received GET request at /")
     return "Bot is alive!"
 
-# נקודת קצה עבור Webhook של Telegram
+# נקודת קצה עבור Webhook של Telegram (שונה לסינכרוני)
 @app.route('/webhook', methods=['POST'])
-async def webhook():
+def webhook():
     logger.info("Received webhook update from Telegram")
     update = Update.de_json(request.get_json(), bot_app.bot)
-    await bot_app.process_update(update)
+    bot_app.process_update(update)  # קריאה סינכרונית במקום אסינכרונית
     return 'OK'
 
 # יצירת אפליקציית הבוט עם Webhook
