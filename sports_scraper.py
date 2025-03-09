@@ -3,20 +3,28 @@ from bs4 import BeautifulSoup
 import logging
 
 # הגדרת לוגים ברמת DEBUG
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
 logger = logging.getLogger(__name__)
 
 BASE_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'application/json',
-    'Referer': 'https://www.google.com/'
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9,he;q=0.8',
+    'Referer': 'https://www.google.com/',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1'
 }
 
 def scrape_sport5():
     try:
         url = 'https://m.sport5.co.il/'
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
+        response = scraper.get(url, headers=BASE_HEADERS, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
         
         articles = soup.select('nav.posts-list.posts-list-articles ul li')
         
@@ -49,7 +57,8 @@ def scrape_sport1():
     try:
         url = 'https://sport1.maariv.co.il/'
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
+        response = scraper.get(url, headers=BASE_HEADERS, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
         
         articles = soup.select('div.hot-news-container article.article-card')
         
@@ -82,7 +91,8 @@ def scrape_one():
     try:
         url = 'https://m.one.co.il/mobile/'
         scraper = cloudscraper.create_scraper()
-        soup = BeautifulSoup(scraper.get(url, headers=BASE_HEADERS).text, 'html.parser')
+        response = scraper.get(url, headers=BASE_HEADERS, timeout=10)
+        soup = BeautifulSoup(response.text, 'html.parser')
         
         articles = soup.select('a.mobile-hp-article-plain')
         
@@ -90,7 +100,7 @@ def scrape_one():
         for item in articles[:3]:
             link_tag = item
             title_tag = item.find('h1')
-            time = 'ללא שעה'
+            time = 'ללא שעה'  # הערה: לא נמצא תג זמן, נשאר כברירת מחדל
             
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
