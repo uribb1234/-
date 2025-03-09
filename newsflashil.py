@@ -532,18 +532,14 @@ def run_bot():
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
     logger.info("Added latest_news handler")
     
-    # יצירת event loop עבור ה-Thread הנוכחי
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
     # בדיקת חיבור לטלגרם
+    loop = asyncio.get_event_loop()
     loop.run_until_complete(test_telegram_connection())
     
     logger.info("Attempting to start polling...")
-    # הפעלת polling עם ה-loop הנוכחי
-    loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
+    # הפעלת polling ישירות ב-main thread
+    bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Bot polling started successfully.")
-    loop.close()
 
 def run_flask():
     logger.info("Starting Flask server...")
@@ -552,20 +548,13 @@ def run_flask():
 if __name__ == '__main__':
     logger.info("Starting main process...")
     
-    # הרצת הבוט וה-Flask במקביל
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    # הרצת הבוט ב-main thread וה-Flask ב-Thread נפרד
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     
-    logger.info("Starting bot thread...")
-    bot_thread.start()
     logger.info("Starting Flask thread...")
     flask_thread.start()
     
-    # שמירה על התוכנית חיה כדי ש-Flask ימשיך לרוץ
-    try:
-        while True:
-            time.sleep(1)  # שומר את התוכנית פעילה
-    except KeyboardInterrupt:
-        logger.info("Shutting down threads...")
+    # הפעלת הבוט ב-main thread
+    run_bot()
     
-    logger.info("Application shutdown complete.")
+    # שמירה על התוכנית חיה לא תידרש כאן כי run_polling() יחזיק את ה-main thread
