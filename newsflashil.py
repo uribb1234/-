@@ -90,13 +90,18 @@ def scrape_ynet():
         logger.error(f"שגיאה ב-Ynet: {e}")
         return []
 
-
 def scrape_arutz7():
+    logger.debug("Scraping Arutz 7...")
     try:
-        response = requests.get(NEWS_SITES['arutz7'], headers=HEADERS)
-        response.raise_for_status()
+        response = requests.get(NEWS_SITES['arutz7'], headers=BASE_HEADERS, timeout=10)
+        logger.debug(f"Arutz 7 API response status: {response.status_code}")
+        response.raise_for_status()  # יזרוק שגיאה אם הסטטוס אינו 200
         data = response.json()
+        logger.debug(f"Arutz 7 raw JSON data: {json.dumps(data, ensure_ascii=False)[:500]}... (truncated)")
         items = data.get('Items', []) if 'Items' in data else data
+        if not items:
+            logger.warning("No 'Items' found in Arutz 7 API response")
+            return []
         return [
             {
                 'time': item.get('time', item.get('itemDate', "ללא שעה")[:16].replace('T', ' ')),
@@ -104,8 +109,17 @@ def scrape_arutz7():
                 'link': item.get('shotedLink', item.get('link', '#'))
             } for item in items[:3]
         ]
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP Error in Arutz 7: {e}, Status Code: {e.response.status_code}, Response: {e.response.text[:200]}")
+        return []
+    except requests.exceptions.Timeout:
+        logger.error("Timeout error while scraping Arutz 7")
+        return []
+    except ValueError as e:
+        logger.error(f"JSON decoding error in Arutz 7: {e}, Response text: {response.text[:200]}")
+        return []
     except Exception as e:
-        logger.error(f"שגיאה בערוץ 7: {e}")
+        logger.error(f"Unexpected error in Arutz 7: {e}")
         return []
 
 def scrape_walla():
