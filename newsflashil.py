@@ -414,7 +414,7 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tech_news, username: {username}")
     log_interaction(user_id, "tech_news", username)
     await query.answer()
-    await update.message.reply_text("מחפש חדשות טכנולוגיה...")
+    await query.message.reply_text("מחפש חדשות טכנולוגיה...")
     
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
     message = "**Ynet Tech**\n"
@@ -506,6 +506,15 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
+async def test_telegram_connection():
+    logger.info("Testing Telegram connection...")
+    try:
+        bot = bot_app.bot
+        await bot.get_me()
+        logger.info("Successfully connected to Telegram!")
+    except Exception as e:
+        logger.error(f"Failed to connect to Telegram: {str(e)}")
+
 def run_bot():
     logger.info("Starting bot polling...")
     bot_app.add_handler(CommandHandler("start", start))
@@ -522,16 +531,22 @@ def run_bot():
     logger.info("Added tv_news handler")
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='^latest_news$'))
     logger.info("Added latest_news handler")
+    
     # יצירת event loop עבור ה-thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
+        # בדיקת חיבור לטלגרם
+        loop.run_until_complete(test_telegram_connection())
+        logger.info("Attempting to start polling...")
         loop.run_until_complete(bot_app.run_polling(allowed_updates=Update.ALL_TYPES))
         logger.info("Bot polling started successfully.")
     except Exception as e:
-        logger.error(f"Error in run_polling: {e}")
+        logger.error(f"Error in run_polling: {str(e)}", exc_info=True)
     finally:
+        logger.info("Closing event loop...")
         loop.close()
+        logger.info("Event loop closed.")
 
 def run_flask():
     logger.info("Starting Flask server...")
