@@ -185,16 +185,26 @@ def scrape_reshet13():
         # הדפסת ה-JSON המלא ללוג לבדיקה
         logger.debug(f"תגובה מלאה מרשת 13: {json.dumps(data, ensure_ascii=False, indent=2)}")
         
-        # שליפת המבזקים מה-JSON
-        page_props = data.get('pageProps', {})
-        content = page_props.get('Content', {})
-        page_grid = content.get('PageGrid', [{}])
-        news_flash_arr = page_grid[0].get('newsFlashArr', [])
+        # שליפת המבזקים מה-JSON עם בדיקות נוספות
+        page_props = data.get('pageProps')
+        if not page_props:
+            logger.error("לא נמצא 'pageProps' ב-JSON של רשת 13")
+            return [], "לא נמצא 'pageProps' בנתונים"
         
-        # בדיקה אם יש מבזקים
-        if not news_flash_arr:
-            logger.error("לא נמצאו מבזקים ב-JSON של רשת 13")
-            return [], "לא נמצאו מבזקים בנתונים"
+        content = page_props.get('Content')
+        if not content:
+            logger.error("לא נמצא 'Content' ב-JSON של רשת 13")
+            return [], "לא נמצא 'Content' בנתונים"
+        
+        page_grid = content.get('PageGrid')
+        if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
+            logger.error("לא נמצא 'PageGrid' תקף ב-JSON של רשת 13")
+            return [], "לא נמצא 'PageGrid' תקף בנתונים"
+        
+        news_flash_arr = page_grid[0].get('newsFlashArr')
+        if not news_flash_arr or not isinstance(news_flash_arr, list):
+            logger.error("לא נמצא 'newsFlashArr' תקף ב-JSON של רשת 13")
+            return [], "לא נמצא 'newsFlashArr' תקף בנתונים"
         
         # עיבוד 3 המבזקים האחרונים
         results = []
@@ -204,7 +214,6 @@ def scrape_reshet13():
             if link and not link.startswith('http'):
                 link = f"https://13tv.co.il{link}"  # הוספת בסיס כתובת אם הקישור יחסי
             time_str = item.get('time', 'ללא שעה')
-            # עיצוב הזמן לפורמט קריא (למשל: "2025-03-10 20:13:01" -> "10/03/25 20:13")
             try:
                 time_formatted = time_str.replace('-', '/')[2:10] + ' ' + time_str[11:16]
             except:
