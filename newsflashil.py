@@ -176,18 +176,22 @@ def scrape_kan11():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
-
 def scrape_reshet13():
     try:
         response = requests.get(NEWS_SITES['reshet13'], headers=BASE_HEADERS, timeout=15)
         response.raise_for_status()  # בדיקת שגיאות HTTP
         data = response.json()
         
-        # הדפסת ה-JSON המלא ללוג כדי לבדוק את המבנה
+        # הדפסת ה-JSON המלא ללוג לבדיקה
         logger.debug(f"תגובה מלאה מרשת 13: {json.dumps(data, ensure_ascii=False, indent=2)}")
         
         # שליפת המבזקים מה-JSON
-        news_flash_arr = data.get('pageProps', {}).get('Content', {}).get('PageGrid', [{}])[0].get('newsFlashArr', [])
+        page_props = data.get('pageProps', {})
+        content = page_props.get('Content', {})
+        page_grid = content.get('PageGrid', [{}])
+        news_flash_arr = page_grid[0].get('newsFlashArr', [])
+        
+        # בדיקה אם יש מבזקים
         if not news_flash_arr:
             logger.error("לא נמצאו מבזקים ב-JSON של רשת 13")
             return [], "לא נמצאו מבזקים בנתונים"
