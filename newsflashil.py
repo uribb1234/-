@@ -183,6 +183,9 @@ def scrape_reshet13():
         response.raise_for_status()  # בדיקת שגיאות HTTP
         data = response.json()
         
+        # הדפסת ה-JSON המלא ללוג כדי לבדוק את המבנה
+        logger.debug(f"תגובה מלאה מרשת 13: {json.dumps(data, ensure_ascii=False, indent=2)}")
+        
         # שליפת המבזקים מה-JSON
         news_flash_arr = data.get('pageProps', {}).get('Content', {}).get('PageGrid', [{}])[0].get('newsFlashArr', [])
         if not news_flash_arr:
@@ -210,7 +213,6 @@ def scrape_reshet13():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג רשת 13: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
-
 async def run_apify_actor():
     logger.debug("Running Apify Actor...")
     max_retries = 3
