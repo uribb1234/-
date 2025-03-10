@@ -45,7 +45,8 @@ NEWS_SITES = {
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579',
     'kan11_alt': 'https://www.kan.org.il/news-flash',
-    'channel14': 'https://www.now14.co.il/feed/'
+    'channel14': 'https://www.now14.co.il/feed/',
+    'reshet13': 'https://13tv.co.il/_next/data/ObWGmDraUyjZLnpGtZra0/he/news/news-flash.json?all=news&all=news-flash'  # הוספתי את רשת 13
 }
 
 BASE_HEADERS = {
@@ -174,6 +175,40 @@ def scrape_kan11():
         return [], "לקח יותר מדי זמן"
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
+        return [], f"שגיאה בסקריפינג: {str(e)}"
+
+def scrape_reshet13():
+    try:
+        response = requests.get(NEWS_SITES['reshet13'], headers=BASE_HEADERS, timeout=15)
+        response.raise_for_status()  # בדיקת שגיאות HTTP
+        data = response.json()
+        
+        # שליפת המבזקים מה-JSON
+        news_flash_arr = data.get('pageProps', {}).get('Content', {}).get('PageGrid', [{}])[0].get('newsFlashArr', [])
+        if not news_flash_arr:
+            logger.error("לא נמצאו מבזקים ב-JSON של רשת 13")
+            return [], "לא נמצאו מבזקים בנתונים"
+        
+        # עיבוד 3 המבזקים האחרונים
+        results = []
+        for item in news_flash_arr[:3]:  # לוקח רק את 3 הראשונים
+            title = item.get('text', 'ללא כותרת')
+            link = item.get('link', '')
+            if link and not link.startswith('http'):
+                link = f"https://13tv.co.il{link}"  # הוספת בסיס כתובת אם הקישור יחסי
+            time_str = item.get('time', 'ללא שעה')
+            # עיצוב הזמן לפורמט קריא (למשל: "2025-03-10 20:13:01" -> "10/03/25 20:13")
+            try:
+                time_formatted = time_str.replace('-', '/')[2:10] + ' ' + time_str[11:16]
+            except:
+                time_formatted = 'ללא שעה'
+            
+            results.append({'time': time_formatted, 'title': title, 'link': link})
+        
+        logger.info(f"סקריפינג רשת 13 הצליח: {len(results)} מבזקים")
+        return results, None
+    except Exception as e:
+        logger.error(f"שגיאה בסקריפינג רשת 13: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
 async def run_apify_actor():
@@ -460,6 +495,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     kan11_news, kan11_error = scrape_kan11()
     channel14_news, channel14_error = await run_apify_actor()  # שואב את תוצאות הריצה האחרונה
+    reshet13_news, reshet13_error = scrape_reshet13()  # הוספת רשת 13
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
@@ -482,7 +518,16 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {channel14_error}\n"
     
     message += "\n**קשת 12**: (הערה: הפונקציה עדיין בבנייה)\n"
-    message += "**רשת 13**: (הערה: הפונקציה עדיין בבנייה)\n"
+    
+    message += "\n**רשת 13**:\n"
+    if reshet13_news:
+        for idx, article in enumerate(reshet13_news[:3], 1):
+            if article['link']:
+                message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
+            else:
+                message += f"{idx}. {article['time']} - {article['title']}\n"
+    else:
+        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {reshet13_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
