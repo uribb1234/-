@@ -193,18 +193,21 @@ def scrape_reshet13():
         
         content = page_props.get('Content')
         if not content:
-            logger.error("לא נמצא 'Content' ב-JSON של רשת 13")
-            return [], "לא נמצא 'Content' בנתונים"
-        
-        page_grid = content.get('PageGrid')
-        if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
-            logger.error("לא נמצא 'PageGrid' תקף ב-JSON של רשת 13")
-            return [], "לא נמצא 'PageGrid' תקף בנתונים"
-        
-        news_flash_arr = page_grid[0].get('newsFlashArr')
-        if not news_flash_arr or not isinstance(news_flash_arr, list):
-            logger.error("לא נמצא 'newsFlashArr' תקף ב-JSON של רשת 13")
-            return [], "לא נמצא 'newsFlashArr' תקף בנתונים"
+            logger.error("לא נמצא 'Content' ב-JSON של רשת 13 - בודק מקור חלופי")
+            # נסה לשלוף מבזקים ממקור חלופי אם קיים
+            news_flash_arr = page_props.get('newsFlashArr', [])
+            if not news_flash_arr:
+                logger.error("גם 'newsFlashArr' לא נמצא ישירות ב-pageProps")
+                return [], "לא נמצאו מבזקים בנתונים"
+        else:
+            page_grid = content.get('PageGrid')
+            if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
+                logger.error("לא נמצא 'PageGrid' תקף ב-JSON של רשת 13")
+                return [], "לא נמצא 'PageGrid' תקף בנתונים"
+            news_flash_arr = page_grid[0].get('newsFlashArr', [])
+            if not news_flash_arr:
+                logger.error("לא נמצא 'newsFlashArr' תקף ב-JSON של רשת 13")
+                return [], "לא נמצא 'newsFlashArr' תקף בנתונים"
         
         # עיבוד 3 המבזקים האחרונים
         results = []
