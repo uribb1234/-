@@ -1,6 +1,7 @@
 import os
 import time
 import requests
+import re
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -46,7 +47,7 @@ NEWS_SITES = {
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579',
     'kan11_alt': 'https://www.kan.org.il/news-flash',
     'channel14': 'https://www.now14.co.il/feed/',
-    'reshet13': 'https://13tv.co.il/_next/data/ObWGmDraUyjZLnpGtZra0/he/news/news-flash.json?all=news&all=news-flash'  # ה-URL של רשת 13
+    'reshet13': 'https://13tv.co.il/_next/data/ObWGmDraUyjZLnpGtZra0/he/news/news-flash.json?all=news&all=news-flash'
 }
 
 BASE_HEADERS = {
@@ -177,36 +178,65 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
+def get_latest_reshet13_url():
+    """שליפת URL דינמי מהדף הראשי של רשת 13"""
+    try:
+        response = requests.get("https://13tv.co.il/news/news-flash/", headers=BASE_HEADERS, timeout=15)
+        response.raise_for_status()
+        match = re.search(r'/_next/data/([^/]+)/he/news/news-flash\.json', response.text)
+        if match:
+            build_id = match.group(1)
+            new_url = f"https://13tv.co.il/_next/data/{build_id}/he/news/news-flash.json?all=news&all=news-flash"
+            logger.info(f"מצאתי URL חדש לרשת 13: {new_url}")
+            return new_url
+        logger.error("לא נמצא מזהה דינמי בדף של רשת 13")
+        return NEWS_SITES['reshet13']  # חזרה ל-URL הישן כברירת מחדל
+    except Exception as e:
+        logger.error(f"שגיאה בשליפת URL חדש לרשת 13: {str(e)}")
+        return NEWS_SITES['reshet13']
+
 def scrape_reshet13():
     try:
-        # שליחת בקשה ל-URL
-        response = requests.get(NEWS_SITES['reshet13'], headers=BASE_HEADERS, timeout=15)
+        # נסה את ה-URL הקבוע קודם
+        url = NEWS_SITES['reshet13']
+        response = requests.get(url, headers=BASE_HEADERS, timeout=15)
         response.raise_for_status()
         data = response.json()
         
-        # הדפסת ה-JSON המלא ללוגים
-        logger.info(f"תגובה מלאה מרשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+        # הדפס את ה-JSON המלא ללוגים
+        logger.info(f"תגובה מלאה מרשת 13 (URL קבוע):\n{json.dumps(data, ensure_ascii=False, indent=2)}")
         
         # שליפת המבזקים
         page_props = data.get('pageProps', {})
         if not page_props:
-            logger.error("לא נמצא 'pageProps' ב-JSON של רשת 13")
-            return [], "לא נמצא 'pageProps' בנתונים"
+            logger.error(f"לא נמצא 'pageProps' ב-JSON של רשת 13 (URL קבוע):\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+            # נסה URL חדש אם הראשון נכשל
+            url = get_latest_reshet13_url()
+            response = requests.get(url, headers=BASE_HEADERS, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+            logger.info(f"תגובה מלאה מרשת 13 (URL דינמי):\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+            page_props = data.get('pageProps', {})
+            if not page_props:
+                logger.error(f"לא נמצא 'pageProps' גם ב-URL הדינמי:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+                return [], "לא נמצא 'pageProps' בנתונים"
         
         content = page_props.get('Content', {})
         if not content:
-            logger.error("לא נמצא 'Content' ב-JSON של רשת 13")
-            return [], "לא נמצא 'Content' בנתונים"
-        
-        page_grid = content.get('PageGrid', [])
-        if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
-            logger.error("לא נמצא 'PageGrid' תקף ב-JSON של רשת 13")
-            return [], "לא נמצא 'PageGrid' תקף בנתונים"
-        
-        news_flash_arr = page_grid[0].get('newsFlashArr', [])
-        if not news_flash_arr:
-            logger.error("לא נמצא 'newsFlashArr' ב-JSON של רשת 13")
-            return [], "לא נמצא 'newsFlashArr' בנתונים"
+            logger.warning(f"לא נמצא 'Content' ב-JSON של רשת 13, בודק מקור חלופי ב-pageProps:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
+            news_flash_arr = page_props.get('newsFlashArr', [])  # נסה לשלוף ישירות מ-pageProps
+            if not news_flash_arr:
+                logger.error(f"לא נמצאו מבזקים גם ב-'newsFlashArr' ישירות ב-pageProps:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
+                return [], "לא נמצאו מבזקים בנתונים"
+        else:
+            page_grid = content.get('PageGrid', [])
+            if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
+                logger.error(f"לא נמצא 'PageGrid' תקף ב-JSON של רשת 13:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
+                return [], "לא נמצא 'PageGrid' תקף בנתונים"
+            news_flash_arr = page_grid[0].get('newsFlashArr', [])
+            if not news_flash_arr:
+                logger.error(f"לא נמצא 'newsFlashArr' ב-JSON של רשת 13:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
+                return [], "לא נמצא 'newsFlashArr' בנתונים"
         
         # עיבוד 3 המבזקים האחרונים
         results = []
@@ -354,7 +384,7 @@ async def run_apify_actor():
                             try:
                                 pub_date = pub_date.split('T')[0] + ' ' + pub_date.split('T')[1].split('+')[0]
                             except Exception as e:
-                                logger.debug(f"Error formatting dc:date for item '{title}' {e}")
+                                logger.debug(f"Error formatting dc:date for item '{title}': {e}")
                     
                     results.append({'time': pub_date, 'title': title, 'link': link})
 
@@ -516,8 +546,8 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
     
     kan11_news, kan11_error = scrape_kan11()
-    channel14_news, channel14_error = await run_apify_actor()  # שואב את תוצאות הריצה האחרונה
-    reshet13_news, reshet13_error = scrape_reshet13()  # הוספת רשת 13
+    channel14_news, channel14_error = await run_apify_actor()
+    reshet13_news, reshet13_error = scrape_reshet13()
     
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
