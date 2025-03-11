@@ -1,7 +1,6 @@
 import os
 import time
 import requests
-import re
 from bs4 import BeautifulSoup
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -14,6 +13,7 @@ from data_logger import log_interaction, save_to_excel
 from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import signal
 from contextlib import contextmanager
+from datetime import datetime
 
 # הגדרת לוגינג
 logging.basicConfig(
@@ -178,76 +178,43 @@ def scrape_kan11():
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
 
-def get_latest_reshet13_url():
-    """שליפת URL דינמי מהדף הראשי של רשת 13"""
-    try:
-        response = requests.get("https://13tv.co.il/news/news-flash/", headers=BASE_HEADERS, timeout=15)
-        response.raise_for_status()
-        match = re.search(r'/_next/data/([^/]+)/he/news/news-flash\.json', response.text)
-        if match:
-            build_id = match.group(1)
-            new_url = f"https://13tv.co.il/_next/data/{build_id}/he/news/news-flash.json?all=news&all=news-flash"
-            logger.info(f"מצאתי URL חדש לרשת 13: {new_url}")
-            return new_url
-        logger.error("לא נמצא מזהה דינמי בדף של רשת 13")
-        return NEWS_SITES['reshet13']  # חזרה ל-URL הישן כברירת מחדל
-    except Exception as e:
-        logger.error(f"שגיאה בשליפת URL חדש לרשת 13: {str(e)}")
-        return NEWS_SITES['reshet13']
-
 def scrape_reshet13():
     try:
-        # נסה את ה-URL הקבוע קודם
         url = NEWS_SITES['reshet13']
         response = requests.get(url, headers=BASE_HEADERS, timeout=15)
         response.raise_for_status()
         data = response.json()
         
         # הדפס את ה-JSON המלא ללוגים
-        logger.info(f"תגובה מלאה מרשת 13 (URL קבוע):\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+        logger.info(f"תגובה מלאה מרשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
         
-        # שליפת המבזקים
-        page_props = data.get('pageProps', {})
-        if not page_props:
-            logger.error(f"לא נמצא 'pageProps' ב-JSON של רשת 13 (URL קבוע):\n{json.dumps(data, ensure_ascii=False, indent=2)}")
-            # נסה URL חדש אם הראשון נכשל
-            url = get_latest_reshet13_url()
-            response = requests.get(url, headers=BASE_HEADERS, timeout=15)
-            response.raise_for_status()
-            data = response.json()
-            logger.info(f"תגובה מלאה מרשת 13 (URL דינמי):\n{json.dumps(data, ensure_ascii=False, indent=2)}")
-            page_props = data.get('pageProps', {})
-            if not page_props:
-                logger.error(f"לא נמצא 'pageProps' גם ב-URL הדינמי:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
-                return [], "לא נמצא 'pageProps' בנתונים"
+        # שליפת המבזקים מ-"newsFlashArr" ישירות מהשורש
+        news_flash_arr = data.get('newsFlashArr', [])
+        if not news_flash_arr:
+            logger.error(f"לא נמצא 'newsFlashArr' ב-JSON של רשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
+            return [], "לא נמצא 'newsFlashArr' בנתונים"
         
-        content = page_props.get('Content', {})
-        if not content:
-            logger.warning(f"לא נמצא 'Content' ב-JSON של רשת 13, בודק מקור חלופי ב-pageProps:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
-            news_flash_arr = page_props.get('newsFlashArr', [])  # נסה לשלוף ישירות מ-pageProps
-            if not news_flash_arr:
-                logger.error(f"לא נמצאו מבזקים גם ב-'newsFlashArr' ישירות ב-pageProps:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
-                return [], "לא נמצאו מבזקים בנתונים"
-        else:
-            page_grid = content.get('PageGrid', [])
-            if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
-                logger.error(f"לא נמצא 'PageGrid' תקף ב-JSON של רשת 13:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
-                return [], "לא נמצא 'PageGrid' תקף בנתונים"
-            news_flash_arr = page_grid[0].get('newsFlashArr', [])
-            if not news_flash_arr:
-                logger.error(f"לא נמצא 'newsFlashArr' ב-JSON של רשת 13:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
-                return [], "לא נמצא 'newsFlashArr' בנתונים"
+        # המרת הזמן לפורמט datetime למיון
+        for item in news_flash_arr:
+            time_str = item.get('time', '1970-01-01 00:00:00')  # ברירת מחדל אם אין זמן
+            try:
+                item['datetime'] = datetime.strptime(time_str, '%Y-%m-%d %H:%M:%S')
+            except ValueError:
+                item['datetime'] = datetime(1970, 1, 1, 0, 0, 0)  # תאריך ישן אם הפורמט שגוי
+        
+        # מיון לפי זמן (מהחדש לישן)
+        sorted_news = sorted(news_flash_arr, key=lambda x: x['datetime'], reverse=True)
         
         # עיבוד 3 המבזקים האחרונים
         results = []
-        for item in news_flash_arr[:3]:
+        for item in sorted_news[:3]:
             title = item.get('text', 'ללא כותרת')
             link = item.get('link', '')
             if link and not link.startswith('http'):
                 link = f"https://13tv.co.il{link}"
             time_str = item.get('time', 'ללא שעה')
             try:
-                time_formatted = time_str.replace('-', '/')[2:10] + ' ' + time_str[11:16]
+                time_formatted = time_str[5:16].replace('-', '/')  # פורמט: MM/DD HH:MM
             except:
                 time_formatted = 'ללא שעה'
             results.append({'time': time_formatted, 'title': title, 'link': link})
