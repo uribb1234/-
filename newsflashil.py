@@ -46,7 +46,7 @@ NEWS_SITES = {
     'kan11': 'https://www.kan.org.il/umbraco/surface/NewsFlashSurface/GetNews?currentPageId=1579',
     'kan11_alt': 'https://www.kan.org.il/news-flash',
     'channel14': 'https://www.now14.co.il/feed/',
-    'reshet13': 'https://13tv.co.il/_next/data/ObWGmDraUyjZLnpGtZra0/he/news/news-flash.json?all=news&all=news-flash'  # הוספתי את רשת 13
+    'reshet13': 'https://13tv.co.il/_next/data/ObWGmDraUyjZLnpGtZra0/he/news/news-flash.json?all=news&all=news-flash'  # ה-URL של רשת 13
 }
 
 BASE_HEADERS = {
@@ -176,59 +176,64 @@ def scrape_kan11():
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג כאן 11: {str(e)}")
         return [], f"שגיאה בסקריפינג: {str(e)}"
+
 def scrape_reshet13():
     try:
+        # שליחת בקשה ל-URL
         response = requests.get(NEWS_SITES['reshet13'], headers=BASE_HEADERS, timeout=15)
-        response.raise_for_status()  # בדיקת שגיאות HTTP
+        response.raise_for_status()
         data = response.json()
         
-        # הדפסת ה-JSON המלא ללוג לבדיקה
-        logger.debug(f"תגובה מלאה מרשת 13: {json.dumps(data, ensure_ascii=False, indent=2)}")
+        # הדפסת ה-JSON המלא ללוגים
+        logger.info(f"תגובה מלאה מרשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
         
-        # שליפת המבזקים מה-JSON עם בדיקות נוספות
-        page_props = data.get('pageProps')
+        # שליפת המבזקים
+        page_props = data.get('pageProps', {})
         if not page_props:
             logger.error("לא נמצא 'pageProps' ב-JSON של רשת 13")
             return [], "לא נמצא 'pageProps' בנתונים"
         
-        content = page_props.get('Content')
+        content = page_props.get('Content', {})
         if not content:
-            logger.error("לא נמצא 'Content' ב-JSON של רשת 13 - בודק מקור חלופי")
-            # נסה לשלוף מבזקים ממקור חלופי אם קיים
-            news_flash_arr = page_props.get('newsFlashArr', [])
-            if not news_flash_arr:
-                logger.error("גם 'newsFlashArr' לא נמצא ישירות ב-pageProps")
-                return [], "לא נמצאו מבזקים בנתונים"
-        else:
-            page_grid = content.get('PageGrid')
-            if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
-                logger.error("לא נמצא 'PageGrid' תקף ב-JSON של רשת 13")
-                return [], "לא נמצא 'PageGrid' תקף בנתונים"
-            news_flash_arr = page_grid[0].get('newsFlashArr', [])
-            if not news_flash_arr:
-                logger.error("לא נמצא 'newsFlashArr' תקף ב-JSON של רשת 13")
-                return [], "לא נמצא 'newsFlashArr' תקף בנתונים"
+            logger.error("לא נמצא 'Content' ב-JSON של רשת 13")
+            return [], "לא נמצא 'Content' בנתונים"
+        
+        page_grid = content.get('PageGrid', [])
+        if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
+            logger.error("לא נמצא 'PageGrid' תקף ב-JSON של רשת 13")
+            return [], "לא נמצא 'PageGrid' תקף בנתונים"
+        
+        news_flash_arr = page_grid[0].get('newsFlashArr', [])
+        if not news_flash_arr:
+            logger.error("לא נמצא 'newsFlashArr' ב-JSON של רשת 13")
+            return [], "לא נמצא 'newsFlashArr' בנתונים"
         
         # עיבוד 3 המבזקים האחרונים
         results = []
-        for item in news_flash_arr[:3]:  # לוקח רק את 3 הראשונים
+        for item in news_flash_arr[:3]:
             title = item.get('text', 'ללא כותרת')
             link = item.get('link', '')
             if link and not link.startswith('http'):
-                link = f"https://13tv.co.il{link}"  # הוספת בסיס כתובת אם הקישור יחסי
+                link = f"https://13tv.co.il{link}"
             time_str = item.get('time', 'ללא שעה')
             try:
                 time_formatted = time_str.replace('-', '/')[2:10] + ' ' + time_str[11:16]
             except:
                 time_formatted = 'ללא שעה'
-            
             results.append({'time': time_formatted, 'title': title, 'link': link})
         
         logger.info(f"סקריפינג רשת 13 הצליח: {len(results)} מבזקים")
         return results, None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"שגיאה בבקשה לרשת 13: {str(e)}")
+        return [], f"שגיאה בבקשה: {str(e)}"
+    except ValueError as e:
+        logger.error(f"שגיאה בפענוח JSON מרשת 13: {str(e)}")
+        return [], f"שגיאה בפענוח JSON: {str(e)}"
     except Exception as e:
-        logger.error(f"שגיאה בסקריפינג רשת 13: {str(e)}")
-        return [], f"שגיאה בסקריפינג: {str(e)}"
+        logger.error(f"שגיאה לא צפויה בסקריפינג רשת 13: {str(e)}")
+        return [], f"שגיאה לא צפויה: {str(e)}"
+
 async def run_apify_actor():
     logger.debug("Running Apify Actor...")
     max_retries = 3
@@ -349,7 +354,7 @@ async def run_apify_actor():
                             try:
                                 pub_date = pub_date.split('T')[0] + ' ' + pub_date.split('T')[1].split('+')[0]
                             except Exception as e:
-                                logger.debug(f"Error formatting dc:date for item '{title}': {e}")
+                                logger.debug(f"Error formatting dc:date for item '{title}' {e}")
                     
                     results.append({'time': pub_date, 'title': title, 'link': link})
 
@@ -486,7 +491,6 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered tech_news, username: {username}")
     log_interaction(user_id, "tech_news", username)
     await query.answer()
-    # שינוי כאן: השתמש ב-query.message במקום update.message
     await query.message.reply_text("מחפש חדשות טכנולוגיה...")
     
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
