@@ -133,9 +133,9 @@ def scrape_ynet_tech():
             time_tag = article.select_one('span.dateView')
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = link_tag['href'] if link_tag else '#'
+            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             if not link.startswith('http'):
                 link = f"https://www.ynet.co.il{link}"
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
             results.append({'time': article_time, 'title': title, 'link': link})
         return results, None
     except Exception as e:
@@ -144,7 +144,7 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        with timeout(60):
+        with timeout(60):  # מגביל ל-60 שניות
             logger.debug("Starting Kan 11 scrape")
             response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, timeout=15)
             response.raise_for_status()
@@ -180,40 +180,48 @@ def scrape_kan11():
 
 def scrape_reshet13():
     try:
-        url = NEWS Gates['reshet13']
+        url = NEWS_SITES['reshet13']
         response = requests.get(url, headers=BASE_HEADERS, timeout=15)
         response.raise_for_status()
         data = response.json()
         
+        # הדפס את ה-JSON המלא ללוגים תמיד
         logger.info(f"תגובה מלאה מרשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
         
+        # שליפת pageProps
         page_props = data.get('pageProps', {})
         if not page_props:
             logger.error(f"לא נמצא 'pageProps' ב-JSON של רשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'pageProps' בנתונים"
         
+        # שליפת page מתוך pageProps
         page = page_props.get('page', {})
         if not page:
             logger.error(f"לא נמצא 'page' ב-pageProps של רשת 13:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'page' בנתונים"
         
+        # שליפת Content מתוך page
         content = page.get('Content', {})
         if not content:
             logger.error(f"לא נמצא 'Content' ב-page של רשת 13:\n{json.dumps(page, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'Content' בנתונים"
         
+        # שליפת PageGrid מתוך Content
         page_grid = content.get('PageGrid', [])
         if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
             logger.error(f"לא נמצא 'PageGrid' תקף ב-Content של רשת 13:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'PageGrid' תקף בנתונים"
         
+        # שליפת newsFlashArr מתוך PageGrid[0]
         news_flash_arr = page_grid[0].get('newsFlashArr', [])
         if not news_flash_arr:
+            # נסה גם ישירות מ-pageProps כגיבוי (למקרה שהמבנה ישתנה)
             news_flash_arr = page_props.get('newsFlashArr', [])
             if not news_flash_arr:
                 logger.error(f"לא נמצא 'newsFlashArr' ב-PageGrid[0] או ב-pageProps:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
                 return [], "לא נמצא 'newsFlashArr' בנתונים"
         
+        # עיבוד 3 המבזקים האחרונים
         results = []
         for item in news_flash_arr[:3]:
             title = item.get('text', 'ללא כותרת')
@@ -264,10 +272,11 @@ def scrape_keshet12():
 async def run_apify_actor():
     logger.debug("Running Apify Actor...")
     max_retries = 3
-    retry_delay = 5
+    retry_delay = 5  # עיכוב של 5 שניות בין ניסיונות
+
     for attempt in range(max_retries):
         try:
-            url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=2&desc=1"
+            url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=2&desc=1"  # מבקש 2 ריצות
             headers = {
                 "Authorization": f"Bearer {APIFY_API_TOKEN}",
                 "Content-Type": "application/json"
@@ -281,11 +290,13 @@ async def run_apify_actor():
             if not run_data.get('data', {}).get('items'):
                 logger.error("No runs found for this Actor.")
                 return [], "לא נמצאו ריצות עבור ה-Actor הזה. ודא שה-Actor מוגדר לרוץ כל שעה ב-Apify."
+
             runs = run_data['data']['items']
             latest_run = runs[0]
             run_id = latest_run['id']
             status = latest_run['status']
             logger.debug(f"Latest run ID: {run_id}, Status: {status}")
+
             if status == 'RUNNING' and len(runs) > 1:
                 logger.warning("Latest run is RUNNING, checking previous run...")
                 previous_run = runs[1]
@@ -301,33 +312,40 @@ async def run_apify_actor():
                     else:
                         logger.error("All runs failed or still running after retries.")
                         return [], "כל הריצות נכשלו או עדיין רצות."
+
             if status != 'SUCCEEDED':
                 logger.error(f"Latest Actor run did not succeed. Status: {status}")
                 return [], f"הריצה האחרונה של ה-Actor לא הצליחה. סטטוס: {status}"
+
             dataset_id = latest_run['defaultDatasetId']
             if not dataset_id:
                 logger.error("No dataset ID found in the latest run.")
                 return [], "לא נמצא Dataset ID עבור הריצה האחרונה."
+
             dataset_url = f"{APIFY_API_URL}/datasets/{dataset_id}/items"
             dataset_response = requests.get(dataset_url, headers=headers, timeout=30)
             if dataset_response.status_code != 200:
                 logger.error(f"Failed to fetch dataset items: {dataset_response.status_code} - {dataset_response.text}")
                 dataset_response.raise_for_status()
+            
             dataset_items = dataset_response.json()
             logger.debug(f"Dataset items: {json.dumps(dataset_items, ensure_ascii=False)[:2000]}... (truncated)")
             if not dataset_items:
                 logger.warning("לא נמצאו פריטים ב-Dataset")
                 return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
+
             results = []
-            for item in dataset_items[:3]:
+            for item in dataset_items[:3]:  # עד 3 פריטים
                 content = item.get('content', '')
                 logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")
                 if not content:
                     logger.warning("Content is empty for this item")
                     continue
+                
                 soup = BeautifulSoup(content, 'html.parser')
                 pre_content = soup.find('pre').text if soup.find('pre') else content
                 logger.debug(f"Cleaned pre content: {pre_content[:2000]}... (truncated)")
+                
                 rss_soup = BeautifulSoup(pre_content, 'lxml')
                 items = rss_soup.select('item')[:3]
                 if not items:
@@ -336,19 +354,23 @@ async def run_apify_actor():
                     logger.debug(f"כל התגיות שנמצאו ב-RSS: {all_tags}")
                     logger.debug(f"Full RSS structure: {rss_soup.prettify()[:2000]}... (truncated)")
                     continue
+
                 for rss_item in items:
                     title = rss_item.find('title')
                     title = title.get_text(strip=True) if title else 'ללא כותרת'
+                    
                     link = None
                     link_tag = rss_item.find('link')
                     if link_tag and link_tag.string:
                         link = link_tag.string.strip()
                     logger.debug(f"Extracted link for item '{title}': {link}")
+                    
                     if not link:
                         guid_tag = rss_item.find('guid')
                         if guid_tag and guid_tag.string:
                             link = guid_tag.string.strip()
                         logger.debug(f"Extracted link from guid for item '{title}': {link}")
+                    
                     pub_date = rss_item.find('pubdate')
                     if pub_date and pub_date.string:
                         pub_date = pub_date.string.strip()
@@ -359,6 +381,7 @@ async def run_apify_actor():
                             logger.debug(f"Error formatting pubDate for item '{title}': {e}")
                     else:
                         pub_date = 'ללא שעה'
+                    
                     if pub_date == 'ללא שעה':
                         date_tag = rss_item.find('dc:date')
                         pub_date = date_tag.string.strip() if date_tag and date_tag.string else 'ללא שעה'
@@ -367,12 +390,16 @@ async def run_apify_actor():
                                 pub_date = pub_date.split('T')[0] + ' ' + pub_date.split('T')[1].split('+')[0]
                             except Exception as e:
                                 logger.debug(f"Error formatting dc:date for item '{title}': {e}")
+                    
                     results.append({'time': pub_date, 'title': title, 'link': link})
+
             if not results:
                 logger.warning("לא נמצאו מבזקים תקינים לאחר עיבוד")
                 return [], "לא נמצאו מבזקים תקינים לאחר עיבוד"
+
             logger.info(f"שאיבה מערוץ 14 דרך Apify הצליחה: {len(results)} מבזקים")
             return results, None
+
         except Exception as e:
             logger.error(f"שגיאה בשאיבת תוצאות ה-Actor מ-Apify: {str(e)}")
             if attempt < max_retries - 1:
@@ -396,12 +423,15 @@ async def download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} sent /download, username: {username}")
     log_interaction(user_id, "/download", username)
     SECRET_PASSWORD = os.getenv("DOWNLOAD_PASSWORD")
+
     if not SECRET_PASSWORD:
         await update.message.reply_text("שגיאה: הסיסמה לא מוגדרת בשרת!")
         return
+    
     if not context.args or context.args[0] != SECRET_PASSWORD:
         await update.message.reply_text("סיסמה שגויה! אין גישה.")
         return
+    
     try:
         filename = save_to_excel()
         if not os.path.exists(filename):
@@ -425,6 +455,7 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
     walla_news = scrape_walla()
+
     news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
     message = "📰 **המבזקים האחרונים** 📰\n\n"
     for site, articles in news.items():
@@ -438,12 +469,14 @@ async def latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             message += "לא ניתן לטעון כרגע\n"
         message += "\n"
+    
     keyboard = [
         [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
         [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
         [InlineKeyboardButton("📺 חדשות מערוצי טלוויזיה", callback_data='tv_news')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
 
 async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -455,27 +488,32 @@ async def sports_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_interaction(user_id, "sports_news", username)
     await query.answer()
     await query.message.reply_text("מחפש מבזקי ספורט...")
+    
     sport5_news, sport5_error = scrape_sport5()
     sport1_news, sport1_error = scrape_sport1()
     one_news, one_error = scrape_one()
+    
     message = "**ספורט 5**\n"
     if sport5_news:
         for idx, article in enumerate(sport5_news[:3], 1):
             message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport5_error}\n"
+    
     message += "\n**ספורט 1**\n"
     if sport1_news:
         for idx, article in enumerate(sport1_news[:3], 1):
             message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {sport1_error}\n"
+    
     message += "\n**ONE**\n"
     if one_news:
         for idx, article in enumerate(one_news[:3], 1):
             message += f"{idx}. [{article['title']}]({article['link']})\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {one_error}\n"
+    
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
@@ -489,6 +527,7 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_interaction(user_id, "tech_news", username)
     await query.answer()
     await query.message.reply_text("מחפש חדשות טכנולוגיה...")
+    
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
     message = "**Ynet Tech**\n"
     if ynet_tech_news:
@@ -496,6 +535,7 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
             message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {ynet_tech_error}\n"
+    
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
@@ -509,10 +549,12 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     log_interaction(user_id, "tv_news", username)
     await query.answer()
     await query.message.reply_text("מביא חדשות מערוצי טלוויזיה...")
+    
     kan11_news, kan11_error = scrape_kan11()
     channel14_news, channel14_error = await run_apify_actor()
     reshet13_news, reshet13_error = scrape_reshet13()
     keshet12_news, keshet12_error = scrape_keshet12()
+    
     message = "**חדשות מערוצי טלוויזיה**\n\n**כאן 11**:\n"
     if kan11_news:
         for idx, article in enumerate(kan11_news[:3], 1):
@@ -522,6 +564,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {kan11_error}\n"
+    
     message += "\n**עכשיו 14**:\n"
     if channel14_news:
         for idx, article in enumerate(channel14_news[:3], 1):
@@ -531,6 +574,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {channel14_error}\n"
+    
     message += "\n**קשת 12**:\n"
     if keshet12_news:
         for idx, article in enumerate(keshet12_news[:3], 1):
@@ -540,6 +584,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {keshet12_error}\n"
+    
     message += "\n**רשת 13**:\n"
     if reshet13_news:
         for idx, article in enumerate(reshet13_news[:3], 1):
@@ -549,6 +594,7 @@ async def tv_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message += f"{idx}. {article['time']} - {article['title']}\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {reshet13_error}\n"
+    
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.message.reply_text(text=message, parse_mode='Markdown', disable_web_page_preview=True, reply_markup=reply_markup)
@@ -561,9 +607,11 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.debug(f"User {user_id} triggered latest_news, username: {username}")
     log_interaction(user_id, "latest_news", username)
     await query.answer()
+    
     ynet_news = scrape_ynet()
     arutz7_news = scrape_arutz7()
     walla_news = scrape_walla()
+
     news = {'Ynet': ynet_news, 'ערוץ 7': arutz7_news, 'Walla': walla_news}
     message = "📰 **המבזקים האחרונים** 📰\n\n"
     for site, articles in news.items():
@@ -577,6 +625,7 @@ async def latest_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             message += "לא ניתן לטעון כרגע\n"
         message += "\n"
+    
     keyboard = [
         [InlineKeyboardButton("⚽🏀 חדשות ספורט", callback_data='sports_news')],
         [InlineKeyboardButton("💻 חדשות טכנולוגיה", callback_data='tech_news')],
@@ -604,8 +653,10 @@ if __name__ == "__main__":
     bot_app.add_handler(CallbackQueryHandler(tech_news, pattern='tech_news'))
     bot_app.add_handler(CallbackQueryHandler(tv_news, pattern='tv_news'))
     bot_app.add_handler(CallbackQueryHandler(latest_news, pattern='latest_news'))
+
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
+
     logger.info("Starting bot polling in main thread...")
     bot_app.run_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Bot polling started successfully")
