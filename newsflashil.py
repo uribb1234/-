@@ -14,7 +14,6 @@ from sports_scraper import scrape_sport5, scrape_sport1, scrape_one
 import signal
 from contextlib import contextmanager
 
-# הגדרת לוגינג
 logging.basicConfig(
     level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -29,7 +28,6 @@ if not TOKEN:
     exit(1)
 logger.info(f"TELEGRAM_TOKEN found: {TOKEN[:5]}... (shortened for security)")
 
-# הגדרת API של Apify עם אימות טוקן
 APIFY_API_TOKEN = os.getenv("APIFY_API_TOKEN")
 if not APIFY_API_TOKEN:
     logger.error("שגיאה: APIFY_API_TOKEN לא מוגדר! אנא הגדר אותו ב-Render תחת Environment Variables עם הטוקן האמיתי מ-Apify Console.")
@@ -73,7 +71,7 @@ def timeout(seconds):
     finally:
         signal.alarm(0)
 
-def scrape_ynet():
+ педагогікаdef scrape_ynet():
     try:
         response = requests.get(NEWS_SITES['ynet'], headers=BASE_HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -144,7 +142,7 @@ def scrape_ynet_tech():
 
 def scrape_kan11():
     try:
-        with timeout(60):  # מגביל ל-60 שניות
+        with timeout(60):
             logger.debug("Starting Kan 11 scrape")
             response = requests.get(NEWS_SITES['kan11'], headers=BASE_HEADERS, timeout=15)
             response.raise_for_status()
@@ -185,43 +183,35 @@ def scrape_reshet13():
         response.raise_for_status()
         data = response.json()
         
-        # הדפס את ה-JSON המלא ללוגים תמיד
         logger.info(f"תגובה מלאה מרשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
         
-        # שליפת pageProps
         page_props = data.get('pageProps', {})
         if not page_props:
             logger.error(f"לא נמצא 'pageProps' ב-JSON של רשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'pageProps' בנתונים"
         
-        # שליפת page מתוך pageProps
         page = page_props.get('page', {})
         if not page:
             logger.error(f"לא נמצא 'page' ב-pageProps של רשת 13:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'page' בנתונים"
         
-        # שליפת Content מתוך page
         content = page.get('Content', {})
         if not content:
             logger.error(f"לא נמצא 'Content' ב-page של רשת 13:\n{json.dumps(page, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'Content' בנתונים"
         
-        # שליפת PageGrid מתוך Content
         page_grid = content.get('PageGrid', [])
         if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
             logger.error(f"לא נמצא 'PageGrid' תקף ב-Content של רשת 13:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'PageGrid' תקף בנתונים"
         
-        # שליפת newsFlashArr מתוך PageGrid[0]
         news_flash_arr = page_grid[0].get('newsFlashArr', [])
         if not news_flash_arr:
-            # נסה גם ישירות מ-pageProps כגיבוי (למקרה שהמבנה ישתנה)
             news_flash_arr = page_props.get('newsFlashArr', [])
             if not news_flash_arr:
                 logger.error(f"לא נמצא 'newsFlashArr' ב-PageGrid[0] או ב-pageProps:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
                 return [], "לא נמצא 'newsFlashArr' בנתונים"
         
-        # עיבוד 3 המבזקים האחרונים
         results = []
         for item in news_flash_arr[:3]:
             title = item.get('text', 'ללא כותרת')
@@ -272,11 +262,16 @@ def scrape_keshet12():
 async def run_apify_actor():
     logger.debug("Running Apify Actor...")
     max_retries = 3
-    retry_delay = 5  # עיכוב של 5 שניות בין ניסיונות
+    retry_delay = 5
+    months_hebrew = {
+        'Jan': 'ינואר', 'Feb': 'פברואר', 'Mar': 'מרץ', 'Apr': 'אפריל',
+        'May': 'מאי', 'Jun': 'יוני', 'Jul': 'יולי', 'Aug': 'אוגוסט',
+        'Sep': 'ספטמבר', 'Oct': 'אוקטובר', 'Nov': 'נובמבר', 'Dec': 'דצמבר'
+    }
 
     for attempt in range(max_retries):
         try:
-            url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=2&desc=1"  # מבקש 2 ריצות
+            url = f"{APIFY_API_URL}/acts/{APIFY_ACTOR_ID}/runs?limit=2&desc=1"
             headers = {
                 "Authorization": f"Bearer {APIFY_API_TOKEN}",
                 "Content-Type": "application/json"
@@ -335,7 +330,7 @@ async def run_apify_actor():
                 return [], "לא נמצאו מבזקים ב-Dataset של הריצה האחרונה"
 
             results = []
-            for item in dataset_items[:3]:  # עד 3 פריטים
+            for item in dataset_items[:3]:
                 content = item.get('content', '')
                 logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")
                 if not content:
@@ -375,10 +370,14 @@ async def run_apify_actor():
                     if pub_date and pub_date.string:
                         pub_date = pub_date.string.strip()
                         try:
-                            pub_date = pub_date.split('+')[0].strip()
-                            pub_date = ' '.join(pub_date.split()[1:4])
+                            parts = pub_date.split()
+                            day = parts[1]
+                            month = months_hebrew.get(parts[2], parts[2])
+                            year = parts[3]
+                            pub_date = f"{day} {month} {year}"
                         except Exception as e:
                             logger.debug(f"Error formatting pubDate for item '{title}': {e}")
+                            pub_date = 'ללא שעה'
                     else:
                         pub_date = 'ללא שעה'
                     
@@ -387,9 +386,13 @@ async def run_apify_actor():
                         pub_date = date_tag.string.strip() if date_tag and date_tag.string else 'ללא שעה'
                         if pub_date != 'ללא שעה':
                             try:
-                                pub_date = pub_date.split('T')[0] + ' ' + pub_date.split('T')[1].split('+')[0]
+                                date_parts = pub_date.split('T')[0].split('-')
+                                year, month, day = date_parts
+                                month = months_hebrew.get(month, month)
+                                pub_date = f"{day} {month} {year}"
                             except Exception as e:
                                 logger.debug(f"Error formatting dc:date for item '{title}': {e}")
+                                pub_date = 'ללא שעה'
                     
                     results.append({'time': pub_date, 'title': title, 'link': link})
 
