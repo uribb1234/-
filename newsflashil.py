@@ -71,7 +71,7 @@ def timeout(seconds):
     finally:
         signal.alarm(0)
 
- педагогікаdef scrape_ynet():
+def scrape_ynet():
     try:
         response = requests.get(NEWS_SITES['ynet'], headers=BASE_HEADERS)
         soup = BeautifulSoup(response.text, 'html.parser')
@@ -332,7 +332,7 @@ async def run_apify_actor():
             results = []
             for item in dataset_items[:3]:
                 content = item.get('content', '')
-                logger.debug(f"Processing dataset item content (raw): {content[:2000]}... (truncated)")
+                logger.debug(f"Processing dataset item content Кривий Ріг(raw): {content[:2000]}... (truncated)")
                 if not content:
                     logger.warning("Content is empty for this item")
                     continue
