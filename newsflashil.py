@@ -193,25 +193,32 @@ def scrape_reshet13():
             logger.error(f"לא נמצא 'pageProps' ב-JSON של רשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'pageProps' בנתונים"
         
-        # שליפת newsFlashArr ישירות מ-pageProps
-        news_flash_arr = page_props.get('newsFlashArr', [])
+        # שליפת page מתוך pageProps
+        page = page_props.get('page', {})
+        if not page:
+            logger.error(f"לא נמצא 'page' ב-pageProps של רשת 13:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
+            return [], "לא נמצא 'page' בנתונים"
+        
+        # שליפת Content מתוך page
+        content = page.get('Content', {})
+        if not content:
+            logger.error(f"לא נמצא 'Content' ב-page של רשת 13:\n{json.dumps(page, ensure_ascii=False, indent=2)}")
+            return [], "לא נמצא 'Content' בנתונים"
+        
+        # שליפת PageGrid מתוך Content
+        page_grid = content.get('PageGrid', [])
+        if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
+            logger.error(f"לא נמצא 'PageGrid' תקף ב-Content של רשת 13:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
+            return [], "לא נמצא 'PageGrid' תקף בנתונים"
+        
+        # שליפת newsFlashArr מתוך PageGrid[0]
+        news_flash_arr = page_grid[0].get('newsFlashArr', [])
         if not news_flash_arr:
-            logger.error(f"לא נמצא 'newsFlashArr' ב-pageProps של רשת 13:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
-            # נסה גם דרך Content כגיבוי (למקרה שהמבנה ישתנה)
-            content = page_props.get('Content', {})
-            if content:
-                page_grid = content.get('PageGrid', [])
-                if page_grid and isinstance(page_grid, list) and len(page_grid) > 0:
-                    news_flash_arr = page_grid[0].get('newsFlashArr', [])
-                    if not news_flash_arr:
-                        logger.error(f"לא נמצא 'newsFlashArr' ב-PageGrid[0]:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
-                        return [], "לא נמצא 'newsFlashArr' בנתונים"
-                else:
-                    logger.error(f"לא נמצא 'PageGrid' תקף ב-Content:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
-                    return [], "לא נמצא 'PageGrid' תקף בנתונים"
-            else:
-                logger.error("לא נמצאו מבזקים ב-JSON - לא ב-'newsFlashArr' ולא ב-'Content'")
-                return [], "לא נמצאו מבזקים בנתונים"
+            # נסה גם ישירות מ-pageProps כגיבוי (למקרה שהמבנה ישתנה)
+            news_flash_arr = page_props.get('newsFlashArr', [])
+            if not news_flash_arr:
+                logger.error(f"לא נמצא 'newsFlashArr' ב-PageGrid[0] או ב-pageProps:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
+                return [], "לא נמצא 'newsFlashArr' בנתונים"
         
         # עיבוד 3 המבזקים האחרונים
         results = []
@@ -238,7 +245,6 @@ def scrape_reshet13():
     except Exception as e:
         logger.error(f"שגיאה לא צפויה בסקריפינג רשת 13: {str(e)}")
         return [], f"שגיאה לא צפויה: {str(e)}"
-
 async def run_apify_actor():
     logger.debug("Running Apify Actor...")
     max_retries = 3
