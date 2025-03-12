@@ -179,7 +179,7 @@ def scrape_kan11():
 
 def scrape_reshet13():
     try:
-        url = NEWS_SITES['reshet13']  # ה-URL הספציפי שציינת
+        url = NEWS_SITES['reshet13']
         response = requests.get(url, headers=BASE_HEADERS, timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -187,29 +187,31 @@ def scrape_reshet13():
         # הדפס את ה-JSON המלא ללוגים תמיד
         logger.info(f"תגובה מלאה מרשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
         
-        # שליפת המבזקים
+        # שליפת pageProps
         page_props = data.get('pageProps', {})
         if not page_props:
             logger.error(f"לא נמצא 'pageProps' ב-JSON של רשת 13:\n{json.dumps(data, ensure_ascii=False, indent=2)}")
             return [], "לא נמצא 'pageProps' בנתונים"
         
-        content = page_props.get('Content', {})
-        if not content:
-            logger.warning(f"לא נמצא 'Content' ב-JSON של רשת 13, בודק מקור חלופי:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
-            # נסה לשלוף ישירות מ-pageProps אם Content לא קיים
-            news_flash_arr = page_props.get('newsFlashArr', [])
-            if not news_flash_arr:
-                logger.error(f"לא נמצאו מבזקים גם ב-'newsFlashArr' ישירות ב-pageProps:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
+        # שליפת newsFlashArr ישירות מ-pageProps
+        news_flash_arr = page_props.get('newsFlashArr', [])
+        if not news_flash_arr:
+            logger.error(f"לא נמצא 'newsFlashArr' ב-pageProps של רשת 13:\n{json.dumps(page_props, ensure_ascii=False, indent=2)}")
+            # נסה גם דרך Content כגיבוי (למקרה שהמבנה ישתנה)
+            content = page_props.get('Content', {})
+            if content:
+                page_grid = content.get('PageGrid', [])
+                if page_grid and isinstance(page_grid, list) and len(page_grid) > 0:
+                    news_flash_arr = page_grid[0].get('newsFlashArr', [])
+                    if not news_flash_arr:
+                        logger.error(f"לא נמצא 'newsFlashArr' ב-PageGrid[0]:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
+                        return [], "לא נמצא 'newsFlashArr' בנתונים"
+                else:
+                    logger.error(f"לא נמצא 'PageGrid' תקף ב-Content:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
+                    return [], "לא נמצא 'PageGrid' תקף בנתונים"
+            else:
+                logger.error("לא נמצאו מבזקים ב-JSON - לא ב-'newsFlashArr' ולא ב-'Content'")
                 return [], "לא נמצאו מבזקים בנתונים"
-        else:
-            page_grid = content.get('PageGrid', [])
-            if not page_grid or not isinstance(page_grid, list) or len(page_grid) == 0:
-                logger.error(f"לא נמצא 'PageGrid' תקף ב-JSON של רשת 13:\n{json.dumps(content, ensure_ascii=False, indent=2)}")
-                return [], "לא נמצא 'PageGrid' תקף בנתונים"
-            news_flash_arr = page_grid[0].get('newsFlashArr', [])
-            if not news_flash_arr:
-                logger.error(f"לא נמצא 'newsFlashArr' ב-JSON של רשת 13:\n{json.dumps(page_grid[0], ensure_ascii=False, indent=2)}")
-                return [], "לא נמצא 'newsFlashArr' בנתונים"
         
         # עיבוד 3 המבזקים האחרונים
         results = []
