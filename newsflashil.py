@@ -158,7 +158,7 @@ def scrape_calcalist_tech():
             title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
             link = title_tag['href'] if title_tag and 'href' in title_tag.attrs else '#'
             if not link.startswith('http'):
-                link = f"https://www.calcalist.co.il
+                link = f"https://www.calcalist.co.il{link}"  # תיקון השורה הבעייתית
             results.append({'title': title, 'link': link})  # בלי 'time'
         
         return results, None
