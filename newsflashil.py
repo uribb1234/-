@@ -41,8 +41,7 @@ NEWS_SITES = {
     'ynet_tech': 'https://www.ynet.co.il/digital/technews',
     'keshet12': 'https://www.mako.co.il/news-dailynews',
     'reshet13': 'https://13tv.co.il/_next/data/ObWGmDraUyjZLnpGtZra0/he/news/news-flash.json?all=news&all=news-flash',
-    'channel14': 'https://www.now14.co.il/feed/',
-    'calcalist_tech': 'https://www.calcalist.co.il/calcalistech/category/3778'
+    'channel14': 'https://www.now14.co.il/feed/'
 }
 
 BASE_HEADERS = {
@@ -135,39 +134,6 @@ def scrape_ynet_tech():
         return results, None
     except Exception as e:
         logger.error(f"שגיאה בסקריפינג Ynet Tech: {str(e)}")
-        return [], f"שגיאה לא ידועה: {str(e)}"
-
-def scrape_calcalist_tech():
-    try:
-        response = requests.get(NEWS_SITES['calcalist_tech'], headers=BASE_HEADERS, timeout=5)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # ניסיון לשאוב כתבות לפי מבנה אפשרי של כלכליסט
-        articles = soup.select('div.teaser')[:3]  # התאמה זמנית - יש לבדוק את ה-HTML האמיתי
-        if not articles:
-            articles = soup.select('a[href*="/calcalistech/article"]')[:3]  # ניסיון חלופי
-        
-        results = []
-        for article in articles:
-            if article.name == 'a':
-                title_tag = article
-                time_tag = article.find_next('time') or article.find_next('span', class_='date')
-            else:
-                title_tag = article.select_one('a')
-                time_tag = article.select_one('time') or article.select_one('span.date')
-            
-            title = title_tag.get_text(strip=True) if title_tag else 'ללא כותרת'
-            link = title_tag['href'] if title_tag and 'href' in title_tag.attrs else '#'
-            if not link.startswith('http'):
-                link = f"https://www.calcalist.co.il{link}"
-            article_time = time_tag.get_text(strip=True) if time_tag else 'ללא שעה'
-            
-            results.append({'time': article_time, 'title': title, 'link': link})
-        
-        return results, None
-    except Exception as e:
-        logger.error(f"שגיאה בסקריפינג Calcalist Tech: {str(e)}")
         return [], f"שגיאה לא ידועה: {str(e)}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -291,23 +257,12 @@ async def tech_news(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.message.reply_text("מחפש חדשות טכנולוגיה...")
     
     ynet_tech_news, ynet_tech_error = scrape_ynet_tech()
-    calcalist_tech_news, calcalist_tech_error = scrape_calcalist_tech()
-    
-    message = "**חדשות טכנולוגיה**\n\n"
-    
-    message += "**Ynet Tech**\n"
+    message = "**Ynet Tech**\n"
     if ynet_tech_news:
         for idx, article in enumerate(ynet_tech_news[:3], 1):
             message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
     else:
         message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {ynet_tech_error}\n"
-    
-    message += "\n**כלכליסט טק**\n"
-    if calcalist_tech_news:
-        for idx, article in enumerate(calcalist_tech_news[:3], 1):
-            message += f"{idx}. [{article['time']} - {article['title']}]({article['link']})\n"
-    else:
-        message += f"לא ניתן למצוא מבזקים\n**פרטי השגיאה:** {calcalist_tech_error}\n"
     
     keyboard = [[InlineKeyboardButton("🏠 חזרה לעמוד ראשי", callback_data='latest_news')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
